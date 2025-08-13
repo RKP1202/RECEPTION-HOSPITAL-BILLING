@@ -861,8 +861,8 @@ const WorkOrderGeneration = ({ isCollapsed }) => {
         if (!customerAddress)
           errors.customerAddress = "Address is required.";
         if (!customerAge) errors.customerAge = "Age is required.";
-        if (customerAge && parseInt(customerAge) < 0)
-          errors.customerAge = "Age cannot be negative.";
+        if (customerAge && parseInt(customerAge) <= 0)
+          errors.customerAge = "Age must be a positive number.";
         if (!customerGender)
           errors.customerGender = "Gender is required.";
       }
@@ -2313,7 +2313,7 @@ const WorkOrderGeneration = ({ isCollapsed }) => {
                     </select>
                   )}
                   {/* Checkbox to switch between dropdown and manual input */}
-                  <div>
+                  <div className="print:hidden ">
                     <label>
                       <input
                         type="checkbox"
@@ -2526,7 +2526,7 @@ const WorkOrderGeneration = ({ isCollapsed }) => {
             </div>
 
             {/* Save Work Order and Print Buttons */}
-            <div className="flex justify-center text-center space-x-4 mt-6">
+            <div className="flex justify-center text-center space-x-4 mt-6 print:hidden">
               <button
                 type="button"
                 onClick={() => {

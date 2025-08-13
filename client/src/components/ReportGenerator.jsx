@@ -384,6 +384,8 @@ const addFooter = (doc) => {
 
 const ReportGenerator = ({ isCollapsed }) => {
   const { branch: userBranch, name: employeeName, role } = useAuth();
+  const isEmployee = role !== 'admin';
+  const isAdmin = role === 'admin';
   const [reportType, setReportType] = useState(role === 'employee' ? 'consolidated' : 'sales_orders');
   const [reportPeriod, setReportPeriod] = useState('daily');
   const [date, setDate] = useState('');
@@ -391,7 +393,10 @@ const ReportGenerator = ({ isCollapsed }) => {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
-  const [selectedBranches, setSelectedBranches] = useState(role === 'employee' ? [userBranch] : [userBranch]);
+  // const [selectedBranches, setSelectedBranches] = useState(role === 'employee' ? [userBranch] : [userBranch]);
+  const [selectedBranches, setSelectedBranches] = useState(
+    isEmployee ? [userBranch] : [userBranch]
+  );
   const [allBranches, setAllBranches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -417,7 +422,6 @@ const ReportGenerator = ({ isCollapsed }) => {
   const [patients, setPatients] = useState([]);
   const [customers, setCustomers] = useState([]);
 
-  const isEmployee = role === 'employee';
 
   useEffect(() => {
     const convertImageToDataUrl = (image) => {
@@ -507,7 +511,8 @@ const ReportGenerator = ({ isCollapsed }) => {
 
       let startStr, endStr;
 
-      let branchesToReport = isCombined ? [] : selectedBranches;
+      let branchesToReport = isEmployee ? [userBranch] : (isCombined ? [] : selectedBranches);
+      const effectiveIsCombined = isEmployee ? false : isCombined;
       if (isEmployee) {
         branchesToReport = [userBranch];
         setIsCombined(false);
@@ -536,7 +541,7 @@ const ReportGenerator = ({ isCollapsed }) => {
           identifier: date,
           reportTypeLabel: getReportTypeLabel(reportType),
           branches: branchesToReport,
-          isCombined,
+          isCombined: effectiveIsCombined,
         };
       } else if (reportPeriod === 'monthly') {
         if (!monthYear) {
@@ -641,8 +646,6 @@ const ReportGenerator = ({ isCollapsed }) => {
           fetchedData = data;
           break;
         }
-        // In the case 'compiled_report' section of handleGenerateReport
-        // ...existing code...
 
         case 'compiled_report': {
           console.log("Fetching sales data with params:", { startStr, endStr });
@@ -971,7 +974,7 @@ const ReportGenerator = ({ isCollapsed }) => {
           // Fetch sales and work data first
           let salesQuery = supabase
             .from('sales_orders')
-            .select('sales_order_id, work_order_id, mr_number, subtotal, total_amount, created_at, updated_at, branch, customer_id, discount, advance_details')
+            .select('sales_order_id, work_order_id, mr_number, subtotal, total_amount, created_at, updated_at, branch, customer_id, discount, advance_details,payment_method')
             .gte('created_at', startStr)
             .lte('created_at', endStr)
             .limit(5000);
@@ -982,7 +985,7 @@ const ReportGenerator = ({ isCollapsed }) => {
 
           const salesData = await fetchAllRecords(
             'sales_orders',
-            'sales_order_id, work_order_id, mr_number, subtotal, total_amount, created_at, updated_at, branch, customer_id, discount, advance_details',
+            'sales_order_id, work_order_id, mr_number, subtotal, total_amount, created_at, updated_at, branch, customer_id, discount, advance_details , payment_method',
             {
               startStr,
               endStr,
@@ -1109,7 +1112,8 @@ const ReportGenerator = ({ isCollapsed }) => {
               branch: sale.branch || 'N/A',
               created_at: sale.created_at ? formatDateDDMMYYYY(sale.created_at, true) : 'N/A',
               updated_at: sale.updated_at ? formatDateDDMMYYYY(sale.updated_at, true) : 'N/A',
-              raw_created_at: sale.created_at
+              raw_created_at: sale.created_at,
+              payment_method: sale.payment_method || 'N/A',
             };
           });
 
@@ -1130,7 +1134,8 @@ const ReportGenerator = ({ isCollapsed }) => {
               branch: work.branch || 'N/A',
               created_at: work.created_at ? formatDateDDMMYYYY(work.created_at, true) : 'N/A',
               updated_at: work.updated_at ? formatDateDDMMYYYY(work.updated_at, true) : 'N/A',
-              raw_created_at: work.created_at
+              raw_created_at: work.created_at,
+              payment_method: work.payment_method || 'N/A',
             };
           });
 
@@ -1529,7 +1534,7 @@ const ReportGenerator = ({ isCollapsed }) => {
           'Status',
           'Branch',
           'Created At',
-          'Updated At',
+          'Payment Method',
         ];
         break;
 
@@ -1868,7 +1873,7 @@ const ReportGenerator = ({ isCollapsed }) => {
           record.status || 'N/A',
           record.branch || 'N/A',
           record.created_at || 'N/A',
-          record.updated_at || 'N/A',
+          record.payment_method || 'N/A',
         ]);
         break;
       case 'stock_report':
@@ -2253,7 +2258,7 @@ const ReportGenerator = ({ isCollapsed }) => {
   };
 
   const toggleReportScope = (scope) => {
-    if (isEmployee) return;
+    if (isEmployee) return; // Employees cannot change scope
     if (scope === 'combined') {
       setIsCombined(true);
     } else {
@@ -2261,8 +2266,9 @@ const ReportGenerator = ({ isCollapsed }) => {
     }
   };
 
+  // Update the toggleBranch function to prevent employees from selecting other branches
   const toggleBranch = (branchCode) => {
-    if (isEmployee) return;
+    if (isEmployee) return; // Employees cannot change branches
     if (selectedBranches.includes(branchCode)) {
       setSelectedBranches(selectedBranches.filter(code => code !== branchCode));
     } else {
