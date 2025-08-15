@@ -1,2521 +1,4095 @@
-// client/src/components/ReportGenerator.jsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import supabase from '../supabaseClient';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-import { formatDateDDMMYYYY } from '../utils/dateUtils'; // Ensure formatDateDDMMYYYY is properly exported
-import logo from '../assets/sreenethraenglishisolated.png';
-import { useAuth } from '../context/AuthContext';
-import { CheckCircleIcon, ExclamationCircleIcon } from "@heroicons/react/24/outline";
-import { CSVLink } from 'react-csv';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  memo,
+  useCallback,
+} from "react";
+import { PrinterIcon, TrashIcon } from "@heroicons/react/24/outline";
+import supabase from "../supabaseClient";
+import { useNavigate, useLocation, useParams } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import EmployeeVerification from "../components/EmployeeVerification";
+import { useGlobalState } from "../context/GlobalStateContext";
+import { XMarkIcon } from '@heroicons/react/24/solid'; // For solid icons
 
-// Utility function to capitalize the first letter
-const capitalizeFirstLetter = (string) => {
-  return string.charAt(0).toUpperCase() + string.slice(1);
+const today = new Date();
+const dd = String(today.getDate()).padStart(2, "0");
+const mm = String(today.getMonth() + 1).padStart(2, "0");
+const yyyy = today.getFullYear();
+
+const formattedDate = `${dd}/${mm}/${yyyy}`;
+
+// Utility Functions
+const mockOtp = "1234";
+const convertUTCToIST = (utcDate) => {
+  const date = new Date(utcDate);
+  const istDate = new Date(date.getTime() + 5.5 * 60 * 60 * 1000);
+  return istDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 };
 
-const CONSULTING_SERVICES = {
-  "CS01": "Consultation",
-  "CS02": "Follow-up Consultation",
-  "CS03": "Special Consultation"
+const getCurrentUTCDateTime = () => {
+  return new Date().toISOString();
 };
 
+// Function to fetch privilege card by phone number
+const fetchPrivilegeCardByPhone = async (phone) => {
+  const { data, error } = await supabase
+    .from("privilegecards")
+    .select("*")
+    .eq("phone_number", phone)
+    .single();
 
-// Define column styles outside the component for better reusability
-const getColumnStyles = (reportType, isEmployee = false) => {
-  // (No changes to this function, keep it as is.)
-  switch (reportType) {
-    case 'sales_orders':
-      if (isEmployee) {
-        return {
-          0: { halign: 'center', cellWidth: 30 },
-          1: { halign: 'center', cellWidth: 25 },
-          2: { halign: 'center', cellWidth: 25 },
-          3: { halign: 'center', cellWidth: 20 },
-          4: { halign: 'center', cellWidth: 20 },
-          5: { halign: 'center', cellWidth: 20 },
-          6: { halign: 'center', cellWidth: 25 },
-          7: { halign: 'center', cellWidth: 25 },
-          8: { halign: 'center', cellWidth: 25 },
-          9: { halign: 'center', cellWidth: 25 },
-          10: { halign: 'center', cellWidth: 25 },
-        };
-      } else {
-        return {
-          0: { halign: 'center', cellWidth: 35 },
-          1: { halign: 'center', cellWidth: 28 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 25 },
-          4: { halign: 'center', cellWidth: 25 },
-          5: { halign: 'center', cellWidth: 16 },
-          6: { halign: 'center', cellWidth: 18 },
-          7: { halign: 'center', cellWidth: 16 },
-          8: { halign: 'center', cellWidth: 16 },
-          9: { halign: 'center', cellWidth: 20 },
-          10: { halign: 'center', cellWidth: 20 },
-          11: { halign: 'center', cellWidth: 28 },
-          12: { halign: 'center', cellWidth: 28 },
-        };
-      }
-
-    case 'insurance_claims':
-      if (isEmployee) {
-        return {
-          0: { halign: 'center', cellWidth: 25 },
-          1: { halign: 'center', cellWidth: 30 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 20 },
-          4: { halign: 'center', cellWidth: 20 },
-          5: { halign: 'center', cellWidth: 20 },
-          6: { halign: 'center', cellWidth: 25 },
-        };
-      } else {
-        return {
-          0: { halign: 'center', cellWidth: 30 },
-          1: { halign: 'center', cellWidth: 40 },
-          2: { halign: 'center', cellWidth: 25 },
-          3: { halign: 'center', cellWidth: 25 },
-          4: { halign: 'center', cellWidth: 35 },
-          5: { halign: 'center', cellWidth: 28 },
-          6: { halign: 'center', cellWidth: 28 },
-          7: { halign: 'center', cellWidth: 35 },
-          8: { halign: 'center', cellWidth: 30 },
-        };
-      }
-    case 'product_sales':
-      if (isEmployee) {
-        return {
-          0: { halign: 'center', cellWidth: 100 },
-          2: { halign: 'center', cellWidth: 70 },
-          3: { halign: 'center', cellWidth: 55 },
-          4: { halign: 'center', cellWidth: 55 },
-          5: { halign: 'center', cellWidth: 60 },
-        };
-      } else {
-        return {
-          0: { halign: 'center', cellWidth: 100 },
-          2: { halign: 'center', cellWidth: 70 },
-          3: { halign: 'center', cellWidth: 55 },
-          4: { halign: 'center', cellWidth: 55 },
-          5: { halign: 'center', cellWidth: 60 },
-        };
-      }
-
-    case 'work_orders':
-      if (isEmployee) {
-        return {
-          0: { halign: 'center', cellWidth: 25 },
-          1: { halign: 'center', cellWidth: 20 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 20 },
-          4: { halign: 'center', cellWidth: 20 },
-          5: { halign: 'center', cellWidth: 20 },
-          6: { halign: 'center', cellWidth: 20 },
-          7: { halign: 'center', cellWidth: 15 },
-          8: { halign: 'center', cellWidth: 15 },
-          9: { halign: 'center', cellWidth: 15 },
-          10: { halign: 'center', cellWidth: 20 },
-        };
-      } else {
-        return {
-          0: { halign: 'center', cellWidth: 35 },
-          1: { halign: 'center', cellWidth: 20 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 28 },
-          4: { halign: 'center', cellWidth: 20 },
-          5: { halign: 'center', cellWidth: 20 },
-          6: { halign: 'center', cellWidth: 28 },
-          7: { halign: 'center', cellWidth: 19 },
-          8: { halign: 'center', cellWidth: 19 },
-          9: { halign: 'center', cellWidth: 15 },
-          10: { halign: 'center', cellWidth: 20 },
-          11: { halign: 'center', cellWidth: 25 },
-          12: { halign: 'center', cellWidth: 22 },
-        };
-      }
-
-
-    case 'privilegecards':
-      if (isEmployee) {
-        return {
-          0: { halign: 'center', cellWidth: 25 },
-          1: { halign: 'center', cellWidth: 30 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 20 },
-          4: { halign: 'center', cellWidth: 20 },
-          5: { halign: 'center', cellWidth: 20 },
-          6: { halign: 'center', cellWidth: 20 },
-          7: { halign: 'center', cellWidth: 20 },
-        };
-      } else {
-        return {
-          0: { halign: 'center', cellWidth: 25 },
-          1: { halign: 'center', cellWidth: 30 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 20 },
-          4: { halign: 'center', cellWidth: 20 },
-          5: { halign: 'center', cellWidth: 20 },
-          6: { halign: 'center', cellWidth: 25 },
-          7: { halign: 'center', cellWidth: 20 },
-          8: { halign: 'center', cellWidth: 20 },
-        };
-      }
-
-
-    case 'modification_reports':
-      if (isEmployee) {
-        return {
-          0: { halign: 'center', cellWidth: 20 },
-          1: { halign: 'center', cellWidth: 25 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 25 },
-          4: { halign: 'center', cellWidth: 35 },
-          5: { halign: 'center', cellWidth: 35 },
-          6: { halign: 'center', cellWidth: 20 },
-          7: { halign: 'center', cellWidth: 35 },
-        };
-      } else {
-        return {
-          0: { halign: 'center', cellWidth: 20 },
-          1: { halign: 'center', cellWidth: 25 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 25 },
-          4: { halign: 'center', cellWidth: 35 },
-          5: { halign: 'center', cellWidth: 35 },
-          6: { halign: 'center', cellWidth: 20 },
-          7: { halign: 'center', cellWidth: 35 },
-          8: { halign: 'center', cellWidth: 25 },
-          9: { halign: 'center', cellWidth: 25 },
-        };
-      }
-
-    case 'consolidated':
-      if (isEmployee) {
-        return {
-          0: { halign: 'center', cellWidth: 25 },
-          1: { halign: 'center', cellWidth: 25 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 20 },
-          4: { halign: 'center', cellWidth: 20 },
-          5: { halign: 'center', cellWidth: 20 },
-          6: { halign: 'center', cellWidth: 20 },
-          7: { halign: 'center', cellWidth: 20 },
-          8: { halign: 'center', cellWidth: 20 },
-          9: { halign: 'center', cellWidth: 30 },
-          10: { halign: 'center', cellWidth: 15 },
-        };
-      } else {
-        return {
-          0: { halign: 'center', cellWidth: 29 },
-          1: { halign: 'center', cellWidth: 25 },
-          2: { halign: 'center', cellWidth: 25 },
-          3: { halign: 'center', cellWidth: 20 },
-          4: { halign: 'center', cellWidth: 20 },
-          5: { halign: 'center', cellWidth: 20 },
-          6: { halign: 'center', cellWidth: 20 },
-          7: { halign: 'center', cellWidth: 20 },
-          8: { halign: 'center', cellWidth: 20 },
-          9: { halign: 'center', cellWidth: 30 },
-          10: { halign: 'center', cellWidth: 15 },
-          11: { halign: 'center', cellWidth: 25 },
-          12: { halign: 'center', cellWidth: 25 },
-        };
-      }
-
-    case 'stock_report':
-      return {
-        0: { halign: 'center', cellWidth: 30 },
-        1: { halign: 'center', cellWidth: 35 },
-        2: { halign: 'center', cellWidth: 30 },
-        3: { halign: 'center', cellWidth: 30 },
-        4: { halign: 'center', cellWidth: 30 },
-        5: { halign: 'center', cellWidth: 30 },
-        6: { halign: 'center', cellWidth: 30 },
-      };
-
-    case 'purchase_report':
-      if (isEmployee) {
-        return {
-          0: { halign: 'center', cellWidth: 20 },
-          1: { halign: 'center', cellWidth: 20 },
-          2: { halign: 'center', cellWidth: 30 },
-          3: { halign: 'center', cellWidth: 20 },
-          4: { halign: 'center', cellWidth: 25 },
-          5: { halign: 'center', cellWidth: 35 },
-          6: { halign: 'center', cellWidth: 25 },
-          7: { halign: 'center', cellWidth: 20 },
-          8: { halign: 'center', cellWidth: 25 },
-          9: { halign: 'center', cellWidth: 25 },
-          10: { halign: 'center', cellWidth: 25 },
-        };
-      } else {
-        return {
-          0: { halign: 'center', cellWidth: 20 },
-          1: { halign: 'center', cellWidth: 20 },
-          2: { halign: 'center', cellWidth: 30 },
-          3: { halign: 'center', cellWidth: 20 },
-          4: { halign: 'center', cellWidth: 15 },
-          5: { halign: 'center', cellWidth: 25 },
-          6: { halign: 'center', cellWidth: 35 },
-          7: { halign: 'center', cellWidth: 25 },
-          8: { halign: 'center', cellWidth: 20 },
-          9: { halign: 'center', cellWidth: 25 },
-          10: { halign: 'center', cellWidth: 25 },
-          11: { halign: 'center', cellWidth: 20 },
-        };
-      }
-
-    case 'stock_assignments':
-      if (isEmployee) {
-        return {
-          0: { halign: 'center', cellWidth: 25 },
-          1: { halign: 'center', cellWidth: 35 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 20 },
-          4: { halign: 'center', cellWidth: 20 },
-          5: { halign: 'center', cellWidth: 25 },
-          6: { halign: 'center', cellWidth: 20 },
-          7: { halign: 'center', cellWidth: 20 },
-          8: { halign: 'center', cellWidth: 25 },
-        };
-      } else {
-        return {
-          0: { halign: 'center', cellWidth: 25 },
-          1: { halign: 'center', cellWidth: 35 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 20 },
-          4: { halign: 'center', cellWidth: 20 },
-          5: { halign: 'center', cellWidth: 25 },
-          6: { halign: 'center', cellWidth: 20 },
-          7: { halign: 'center', cellWidth: 20 },
-          8: { halign: 'center', cellWidth: 25 },
-        };
-      }
-
-    case 'credit_debit_notes':
-      if (isEmployee) {
-        return {
-          0: { halign: 'center', cellWidth: 15 },
-          1: { halign: 'center', cellWidth: 15 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 30 },
-          4: { halign: 'center', cellWidth: 15 },
-          5: { halign: 'center', cellWidth: 20 },
-          6: { halign: 'center', cellWidth: 25 },
-          7: { halign: 'center', cellWidth: 25 },
-          8: { halign: 'center', cellWidth: 20 },
-          9: { halign: 'center', cellWidth: 35 },
-          10: { halign: 'center', cellWidth: 20 },
-        };
-      } else {
-        return {
-          0: { halign: 'center', cellWidth: 15 },
-          1: { halign: 'center', cellWidth: 15 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'center', cellWidth: 30 },
-          4: { halign: 'center', cellWidth: 15 },
-          5: { halign: 'center', cellWidth: 20 },
-          6: { halign: 'center', cellWidth: 25 },
-          7: { halign: 'center', cellWidth: 25 },
-          8: { halign: 'center', cellWidth: 20 },
-          9: { halign: 'center', cellWidth: 35 },
-          10: { halign: 'center', cellWidth: 20 },
-          11: { halign: 'center', cellWidth: 25 },
-          12: { halign: 'center', cellWidth: 25 },
-        };
-      }
-
-    default:
-      return {};
+  if (error) {
+    return null;
   }
+  return data;
 };
 
-const addHeader = (doc, logoDataUrl, reportDetails) => {
+const fetchCustomerByPhone = async (phone) => {
+  const { data, error } = await supabase
+    .from("customers")
+    .select("*")
+    .eq("phone_number", phone);
 
-  doc.setFontSize(14);
-  const reportTitle = `${capitalizeFirstLetter(reportDetails.type)} Report - ${capitalizeFirstLetter(
-    reportDetails.reportTypeLabel
-  )}`;
-  doc.text(reportTitle, doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
+  if (error) {
+    console.error("Error fetching customers:", error);
+    return [];
+  }
+  return data;
+};
 
-  doc.setFontSize(10);
-  let periodText = '';
-  if (reportDetails.type === 'Daily') {
-    periodText = `Date: ${reportDetails.date}`;
-  } else if (reportDetails.type === 'Monthly') {
-    periodText = `Month: ${reportDetails.month}/${reportDetails.year}`;
-  } else if (reportDetails.type === 'Date Range') {
-    periodText = `From: ${reportDetails.fromDate} To: ${reportDetails.toDate}`;
-  } else if (reportDetails.type === 'Consolidated') {
-    periodText = `Period: ${reportDetails.fromDate} to ${reportDetails.toDate}`;
+// Function to fetch product details from Supabase
+const fetchProductDetailsFromDatabase = async (productId, branch) => {
+  if (!branch) {
+    console.error("Branch code is undefined or missing.");
+    return null; // Prevent further execution
   }
 
-  doc.text(periodText, doc.internal.pageSize.getWidth() / 2, 50, { align: 'center' });
+  try {
+    // Step 1: Fetch the product details
+    const { data: productData, error: productError } = await supabase
+      .from("products")
+      .select("*")
+      .eq("product_id", productId)
+      .maybeSingle();
 
-  doc.setFontSize(10);
-  const branchesText = `Branches: ${reportDetails.isCombined ? 'All Branches' : (reportDetails.branches && reportDetails.branches.length > 0 ? reportDetails.branches.join(', ') : 'N/A')}`;
-  doc.text(branchesText, doc.internal.pageSize.getWidth() / 2, 55, { align: 'center' });
-};
-
-const addFooter = (doc) => {
-  const pageCount = doc.getNumberOfPages();
-  doc.setFontSize(8);
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.text(
-      `Page ${i} of ${pageCount}`,
-      doc.internal.pageSize.getWidth() / 2,
-      doc.internal.pageSize.getHeight() - 5,
-      { align: 'center' }
-    );
-  }
-};
-
-const ReportGenerator = ({ isCollapsed }) => {
-  const { branch: userBranch, name: employeeName, role } = useAuth();
-  const [reportType, setReportType] = useState(role === 'employee' ? 'consolidated' : 'sales_orders');
-  const [reportPeriod, setReportPeriod] = useState('daily');
-  const [date, setDate] = useState('');
-  const [monthYear, setMonthYear] = useState('');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-
-  const [selectedBranches, setSelectedBranches] = useState(role === 'employee' ? [userBranch] : [userBranch]);
-  const [allBranches, setAllBranches] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
-  const [isCombined, setIsCombined] = useState(false);
-
-  const [logoDataUrl, setLogoDataUrl] = useState('');
-
-  const [purchaseFromOptions, setPurchaseFromOptions] = useState([]);
-  const [selectedPurchaseFrom, setSelectedPurchaseFrom] = useState('All');
-
-  const [reportData, setReportData] = useState([]);
-
-  const reportTypeRef = useRef();
-  const reportPeriodRef = useRef();
-  const dateRef = useRef();
-  const monthYearRef = useRef();
-  const fromDateRef = useRef();
-  const toDateRef = useRef();
-  const branchSelectionRef = useRef();
-  const generateButtonRef = useRef();
-
-  const [patients, setPatients] = useState([]);
-  const [customers, setCustomers] = useState([]);
-
-  const isEmployee = role === 'employee';
-
-  useEffect(() => {
-    const convertImageToDataUrl = (image) => {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.src = image;
-        img.crossOrigin = 'Anonymous';
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0);
-          const dataURL = canvas.toDataURL('image/png');
-          resolve(dataURL);
-        };
-        img.onerror = (err) => {
-          reject(err);
-        };
-      });
-    };
-
-    convertImageToDataUrl(logo)
-      .then((dataUrl) => setLogoDataUrl(dataUrl))
-      .catch((err) => console.error('Failed to load logo image:', err));
-  }, []);
-
-  const fetchAllBranches = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('branches')
-      .select('branch_code, branch_name');
-
-    if (error) {
-      console.error("Error fetching branches:", error);
-      return [];
+    if (productError || !productData) {
+      console.error("Error fetching product details:", productError);
+      return null;
     }
 
-    return data.map(branch => ({ code: branch.branch_code, name: branch.branch_name }));
-  }, []);
+    // Step 2: Fetch stock information using products.id (integer)
+    const { data: stockData, error: stockError } = await supabase
+      .from("stock")
+      .select("quantity")
+      .eq("product_id", productData.id) // Use integer id
+      .eq("branch_code", branch)
+      .single();
 
-  useEffect(() => {
-    const getBranches = async () => {
-      if (!isEmployee) {
-        const branches = await fetchAllBranches();
-        setAllBranches(branches);
-      }
-    };
-    getBranches();
-  }, [fetchAllBranches, isEmployee]);
+    if (stockError || !stockData) {
+      console.error("Error fetching stock:", stockError);
+      return { ...productData, stock: 0 }; // Default stock to 0 if error occurs
+    }
 
-  useEffect(() => {
-    const fetchPurchaseFromForPurchases = async () => {
-      if (reportType === 'purchase_report') {
-        let { data, error } = await supabase
-          .from('purchases')
-          .select('purchase_from', { distinct: true });
+    return { ...productData, stock: stockData.quantity || 0 };
+  } catch (error) {
+    console.error("Unexpected error:", error);
+    return null;
+  }
+};
 
-        if (error) {
-          console.error("Error fetching purchase_from options:", error);
-          return;
+// Helper function to calculate loyalty points
+const calculateLoyaltyPoints = (
+  amountAfterDiscount, // Add this parameter
+  subtotalWithGST,
+  redeemPointsAmount,
+  privilegeCard,
+  privilegeCardDetails,
+  loyaltyPoints
+) => {
+  let pointsToRedeem = 0;
+  if (privilegeCard && privilegeCardDetails) {
+    pointsToRedeem = Math.min(
+      parseFloat(redeemPointsAmount) || 0,
+      loyaltyPoints
+    );
+  }
+
+  let updatedPoints = loyaltyPoints - pointsToRedeem;
+  const pointsToAdd = Math.floor(amountAfterDiscount * 0.05);
+  updatedPoints += pointsToAdd;
+  return { updatedPoints, pointsToRedeem, pointsToAdd };
+};
+
+const normalizeWorkOrderProducts = async (workOrderProducts, branch) => {
+  if (!Array.isArray(workOrderProducts)) {
+    console.error("workOrderProducts is not an array:", workOrderProducts);
+    return [];
+  }
+
+  // Map over workOrderProducts to use the details directly
+  const normalizedProducts = workOrderProducts.map((product) => ({
+    id: product.id || null, // Integer ID if available
+    product_id: product.product_id, // String product_id
+    name: product.product_name || product.name || "", // Use product_name from work order
+    price: parseFloat(product.price) || 0,
+    quantity: parseInt(product.quantity, 10) || 0,
+    hsn_code: product.hsn_code || "",
+    stock: 0, // Will fetch stock later
+  }));
+
+  // Fetch integer IDs for products if not available
+  const productsWithoutId = normalizedProducts.filter((product) => !product.id);
+  if (productsWithoutId.length > 0) {
+    // Fetch integer IDs from products table
+    const productIdsToFetch = productsWithoutId.map(
+      (product) => product.product_id
+    );
+    const { data: productsData, error: productsError } = await supabase
+      .from("products")
+      .select("id, product_id")
+      .in("product_id", productIdsToFetch);
+
+    if (productsError) {
+      console.error("Error fetching products data:", productsError.message);
+    } else {
+      const idMap = new Map();
+      productsData.forEach((product) => {
+        idMap.set(product.product_id, product.id);
+      });
+
+      // Update normalizedProducts with integer IDs
+      normalizedProducts.forEach((product) => {
+        if (!product.id && idMap.has(product.product_id)) {
+          product.id = idMap.get(product.product_id);
         }
+      });
+    }
+  }
 
-        const distinctPurchaseFrom = Array.from(new Set(data.map(d => d.purchase_from).filter(Boolean)));
-        const uniqueOptions = ['All', ...distinctPurchaseFrom];
-        setPurchaseFromOptions(uniqueOptions);
-      } else {
-        setPurchaseFromOptions([]);
-        setSelectedPurchaseFrom('All');
-      }
+  // Now fetch stock for these products using integer IDs
+  const productIds = normalizedProducts
+    .map((product) => product.id)
+    .filter((id) => id !== null);
+
+  // Fetch stock for these product IDs
+  let stockMap = new Map();
+
+  if (productIds.length > 0) {
+    const { data: stockData, error: stockError } = await supabase
+      .from("stock")
+      .select("product_id, quantity")
+      .in("product_id", productIds)
+      .eq("branch_code", branch);
+
+    if (stockError) {
+      console.error("Error fetching stock data:", stockError.message);
+    } else {
+      stockData.forEach((stock) => {
+        stockMap.set(stock.product_id, stock.quantity);
+      });
+    }
+  }
+
+  // Update normalizedProducts with stock
+  const updatedProducts = normalizedProducts.map((product) => {
+    const stockQuantity = stockMap.get(product.id) || 0;
+    return {
+      ...product,
+      stock: stockQuantity,
     };
-    fetchPurchaseFromForPurchases();
-  }, [reportType]);
+  });
 
-  const getLastDayOfMonth = (year, month) => {
-    return new Date(year, month, 0).getDate();
+  return updatedProducts;
+};
+
+// Helper function to calculate differences between original and updated products
+const calculateProductDifferences = (original, updated) => {
+  const differences = [];
+  const originalMap = new Map();
+  original.forEach((prod) => {
+    originalMap.set(prod.id, parseInt(prod.quantity) || 0);
+  });
+
+  const updatedMap = new Map();
+  updated.forEach((prod) => {
+    updatedMap.set(prod.id, parseInt(prod.quantity) || 0);
+  });
+
+  // Check for removed or decreased quantities
+  originalMap.forEach((originalQty, productId) => {
+    const updatedQty = updatedMap.get(productId) || 0;
+    const diff = updatedQty - originalQty;
+    if (diff !== 0) {
+      differences.push({ productId, diff });
+    }
+  });
+
+  // Check for newly added products
+  updatedMap.forEach((updatedQty, productId) => {
+    if (!originalMap.has(productId)) {
+      differences.push({ productId, diff: updatedQty });
+    }
+  });
+
+  return differences;
+};
+
+// Constants for GST rates
+const CGST_RATE = 0.06; // 6% CGST
+const SGST_RATE = 0.06; // 6% SGST
+const GST_DIVISOR = 1.12; // To extract base price from GST-inclusive price
+
+function calculateAmounts(
+  productEntries,
+  advanceDetails,
+  salesDiscountAmount,
+  workOrderDiscountAmount,
+  privilegeCard,
+  privilegeCardDetails,
+  redeemPointsAmount,
+  loyaltyPoints,
+  insuranceInfo
+) {
+  // Constants for GST rates
+  const CGST_RATE = 0.06; // 6%
+  const SGST_RATE = 0.06; // 6%
+  const GST_RATE = CGST_RATE + SGST_RATE; // Total GST rate (12%)
+
+  // Helper functions for parsing and validation
+  const parsePrice = (price) => {
+    const parsed = parseFloat(price);
+    return isNaN(parsed) || parsed < 0 ? 0 : parsed;
   };
 
-  const handleGenerateReport = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-    setReportData([]);
+  const parseQuantity = (quantity) => {
+    const parsed = parseInt(quantity, 10);
+    return isNaN(parsed) || parsed < 0 ? 0 : parsed;
+  };
 
+  // **Step 1: Calculate Subtotal Including GST**
+  const subtotalWithGST = productEntries.reduce((acc, product) => {
+    const priceIncludingGST = parsePrice(product.price);
+    const quantity = parseQuantity(product.quantity);
+    return acc + priceIncludingGST * quantity;
+  }, 0);
+
+  // **Step 2: Apply Discounts**
+  let totalDiscount =
+    parsePrice(workOrderDiscountAmount) + parsePrice(salesDiscountAmount);
+
+  // Ensure totalDiscount doesn't exceed subtotalWithGST
+  if (totalDiscount > subtotalWithGST) {
+    totalDiscount = subtotalWithGST;
+  }
+
+  const amountAfterDiscount = subtotalWithGST - totalDiscount;
+
+  // **Step 3: Extract GST from Amount After Discount**
+  const taxableValue = amountAfterDiscount;
+  const gstAmount = amountAfterDiscount - taxableValue;
+  const cgstAmount = gstAmount / 2;
+  const sgstAmount = gstAmount / 2;
+
+  // **Step 4: Subtract Advance Paid**
+  const advancePaid = parsePrice(advanceDetails);
+  let balanceDue = amountAfterDiscount - advancePaid;
+
+  // Ensure balanceDue is not negative
+  balanceDue = Math.max(balanceDue, 0);
+
+  // **Step 5: Apply Privilege Card Discount (If Applicable)**
+  let privilegeDiscount = 0;
+  if (
+    privilegeCard &&
+    privilegeCardDetails &&
+    parsePrice(redeemPointsAmount) > 0 &&
+    balanceDue > 0
+  ) {
+    const redeemAmount = parsePrice(redeemPointsAmount);
+    privilegeDiscount = Math.min(redeemAmount, loyaltyPoints, balanceDue);
+    balanceDue -= privilegeDiscount;
+    // Ensure balanceDue is not negative after privilege discount
+    balanceDue = Math.max(balanceDue, 0);
+  }
+
+  let insuranceDeduction = 0;
+  if (insuranceInfo) {
+    insuranceDeduction = parseFloat(insuranceInfo.approved_amount) || 0;
+    // Ensure deduction doesn't exceed balance
+    insuranceDeduction = Math.min(insuranceDeduction, balanceDue);
+    balanceDue -= insuranceDeduction;
+    balanceDue = Math.max(balanceDue, 0); // Ensure non-negative
+  }
+
+  // **Step 6: Final Payment Due**
+  const finalAmount = balanceDue.toFixed(2); // Final amount after all deductions
+
+  return {
+    amountAfterDiscount: amountAfterDiscount.toFixed(2), // Add this line
+    subtotalWithGST: subtotalWithGST.toFixed(2),
+    subtotalWithoutGST: taxableValue.toFixed(2), // Add this line
+    totalDiscount: totalDiscount.toFixed(2),
+    taxableValue: taxableValue.toFixed(2),
+    gstAmount: gstAmount.toFixed(2),
+    cgstAmount: cgstAmount.toFixed(2),
+    sgstAmount: sgstAmount.toFixed(2),
+    advance: advancePaid.toFixed(2),
+    balanceDue: balanceDue.toFixed(2),
+    privilegeDiscount: privilegeDiscount.toFixed(2),
+    finalAmount,
+    insuranceDeduction: insuranceDeduction.toFixed(2),
+    // balanceDue: balanceDue.toFixed(2),
+    // finalAmount,
+  };
+}
+
+// Main Component
+const SalesOrderGeneration = memo(({ isCollapsed, onModificationSuccess }) => {
+  const { user, role, name, branch, loading: authLoading, subRole } = useAuth();
+  // console.log("branch:", branch); // Destructure branch from AuthContext
+  // console.log("subRole:", subRole); // Destructure subRole from AuthContext
+  const [validationErrors, setValidationErrors] = useState({});
+
+
+  const { state, dispatch, resetState } = useGlobalState(); // Access global state
+  const { salesOrderForm } = state;
+
+  const resetTransientFields = () => {
+    dispatch({
+      type: "SET_SALES_ORDER_FORM",
+      payload: {
+        isLoading: false,
+        isOtpSent: false,
+        isPinVerified: false,
+        validationErrors: {},
+      },
+    });
+  };
+
+  // Reset transient fields on mount (if necessary)
+
+  const {
+    step,
+    salesOrderId,
+    isEditing,
+    isPrinted,
+    isOtpSent,
+    productEntries,
+    advanceDetails,
+    dueDate,
+    mrNumber,
+    isPinVerified,
+    patientDetails,
+    employee,
+    paymentMethod,
+    discount,
+    gstNumber,
+    isB2B,
+    hasMrNumber,
+    customerName,
+    customerPhone,
+    address,
+    age,
+    gender,
+    modificationRequestId,
+    isSaving,
+    allowPrint,
+    privilegeCard,
+    privilegeCardDetails,
+    loyaltyPoints,
+    pointsToAdd,
+    // validationErrors,
+    redeemOption,
+    redeemPointsAmount,
+    fetchMethod,
+    searchQuery,
+    workOrders,
+    isFetchingWorkOrders,
+    isLoading,
+    workOrderDiscount,
+    submitted,
+
+  } = salesOrderForm;
+
+  const getCurrentISTTime = () => {
+    const now = new Date();
+    const options = {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Kolkata'
+    };
+    return now.toLocaleTimeString('en-IN', options);
+  };
+  const [hasProceededWithoutWorkOrder, setHasProceededWithoutWorkOrder] = useState(false);
+
+  const [currentTime, setCurrentTime] = useState(getCurrentISTTime());
+  useEffect(() => {
+    if (step === 5) {
+      const timer = setInterval(() => {
+        setCurrentTime(getCurrentISTTime());
+      }, 1000);
+
+      return () => clearInterval(timer);
+    }
+  }, [step]);
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (!submitted && !isPrinted) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [submitted, isPrinted]);
+
+  useEffect(() => {
+    // Only restore from sessionStorage if NOT already submitted
+    if (!submitted) {
+      const savedState = sessionStorage.getItem('salesOrderFormState');
+      if (savedState) {
+        try {
+          const parsedState = JSON.parse(savedState);
+          dispatch({
+            type: 'RESTORE_SALES_ORDER_FORM',
+            payload: parsedState
+          });
+          resetTransientFields();
+        } catch (err) {
+          console.error('Error restoring saved state:', err);
+          resetTransientFields();
+        }
+      } else {
+        resetTransientFields();
+      }
+    }
+
+    // Save state to sessionStorage when unmounting
+    return () => {
+      if (!submitted) {
+        sessionStorage.setItem(
+          'salesOrderFormState',
+          JSON.stringify(salesOrderForm)
+        );
+      }
+    };
+  }, [dispatch]); // Remove submitted from dependencies
+
+  // Local states
+  const [originalProductEntries, setOriginalProductEntries] = useState([
+    { id: "", product_id: "", name: "", price: "", quantity: "" },
+  ]);
+  const [selectedWorkOrder, setSelectedWorkOrder] = useState(null);
+  const [showWorkOrderModal, setShowWorkOrderModal] = useState(false);
+  const [employees, setEmployees] = useState([]);
+  const [productSuggestions, setProductSuggestions] = useState([]);
+  const [isGeneratingId, setIsGeneratingId] = useState(false);
+  // State for consultant
+  const [consultantName, setConsultantName] = useState('');
+  const [consultantList, setConsultantList] = useState([
+
+  ]);
+  const [useManualConsultant, setUseManualConsultant] = useState(false);
+  useEffect(() => {
+    // Base consultant list for all branches
+    const baseConsultants = [
+      "Dr. Ashad Sivaraman",
+      "Dr. Harshali Yadav",
+      "Dr. Swapna Nair",
+      "Dr. Anoop Sivaraman",
+      "Dr. Anila George",
+      "Dr. Arvin Ponnat",
+      "Dr. Shabna",
+      "Dr. Malavika. G",
+      "Dr.Yasar Safar",
+    ];
+
+    // Additional consultants for Kottarakara branch
+    const kottarakaraConsultants = [
+      "Dr. Pinki",
+      "Dr. Anuprabha",
+      "Dr. Shihail Jinna",
+      "Dr. Rajalekshmi",
+      "Dr. Anupama Sreevalsan",
+      "Dr. Devendra Maheswari",
+      "Dr. Renjith Nathan",
+      "Dr. Krishna",
+      "Dr. Rekha",
+      "Dr. Soumya",
+    ];
+
+    // Additional consultants for Trivandrum branch
+    const trivandrumConsultants = [
+      "Dr. Sandton",
+      "Dr. Mahadevan",
+    ];
+
+    // Set appropriate consultant list based on branch
+    if ((branch === "KOT2") || (branch === "KOT1")) {
+      setConsultantList([...baseConsultants, ...kottarakaraConsultants]);
+    } else if (branch === "TVR") {
+      setConsultantList([...baseConsultants, ...trivandrumConsultants]);
+    } else {
+      setConsultantList(baseConsultants);
+    }
+  }, [branch]);
+
+
+  const fetchConsultants = useCallback(async () => {
     try {
-      let fetchedData = [];
-      let reportDetails = {};
+      const { data, error } = await supabase
+        .from('consultants')
+        .select('*');
+      if (error) throw error;
+      setConsultantList(data || []);
+    } catch (err) {
+      console.error('Error fetching consultants:', err);
+    }
+  }, []);
 
-      let startStr, endStr;
+  const [lastBilledOrder, setLastBilledOrder] = useState(null);
+  const [isLoadingLastOrder, setIsLoadingLastOrder] = useState(false);
 
-      let branchesToReport = isCombined ? [] : selectedBranches;
-      if (isEmployee) {
-        branchesToReport = [userBranch];
-        setIsCombined(false);
+  const fetchLastBilledOrder = async () => {
+    setIsLoadingLastOrder(true);
+    try {
+      const { data, error } = await supabase
+        .from('sales_orders')
+        .select('sales_order_id, mr_number, created_at')
+        .eq('branch', branch)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      if (data && data.length > 0) {
+        setLastBilledOrder(data[0]);
+      }
+    } catch (err) {
+      console.error('Error fetching last billed order:', err);
+    } finally {
+      setIsLoadingLastOrder(false);
+    }
+  };
+
+  useEffect(() => {
+    if (branch) {
+      fetchLastBilledOrder();
+    }
+  }, [branch]);
+
+
+  // Refs for input fields to control focus
+  const workOrderInputRef = useRef(null);
+  const firstWorkOrderButtonRef = useRef(null);
+  const fetchButtonRef = useRef(null);
+  const proceedButtonRef = useRef(null);
+  const nextButtonRef = useRef(null);
+  const employeeRef = useRef(null);
+  const privilegeCardRef = useRef(null);
+  const privilegePhoneRef = useRef(null);
+  const otpRef = useRef(null);
+  const customerNameRef = useRef(null);
+  const customerPhoneRef = useRef(null);
+  const addressRef = useRef(null);
+  const genderRef = useRef(null);
+  const ageRef = useRef(null);
+  const mrNumberRef = useRef(null);
+  const redeemPointsAmountRef = useRef(null);
+  const printButtonRef = useRef(null);
+  const paymentMethodRef = useRef(null);
+  const saveOrderRef = useRef(null);
+  const discountInputRef = useRef(null);
+  const productRefs = useRef([]);
+  const quantityRefs = useRef([]);
+  const gstNumberRef = useRef(null);
+
+
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { orderId } = useParams();
+
+  // Helper function to update global form state
+  const updateSalesOrderForm = (payload) => {
+    dispatch({
+      type: "SET_SALES_ORDER_FORM",
+      payload,
+    });
+  };
+
+  // 1. Add new function to generate general sales order ID
+  const generateGeneralSalesId = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("sales_orders")
+        .select("sales_order_id")
+        .like("sales_order_id", "GNS-%")
+        .order("sales_order_id", { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error("Error fetching last general sales order ID:", error);
+        return "GNS-00001";
       }
 
-      if (reportPeriod === 'daily') {
-        if (!date) {
-          setError('Please select a date for the daily report.');
-          setLoading(false);
-          return;
-        }
-        const selectedDate = new Date(date);
-        if (isNaN(selectedDate.getTime())) {
-          setError('Invalid date selected.');
-          setLoading(false);
-          return;
-        }
-
-        startStr = `${date} 00:00:00`;
-        endStr = `${date} 23:59:59`;
-
-        reportDetails = {
-          type: 'Daily',
-          date: formatDateDDMMYYYY(date),
-          identifier: date,
-          reportTypeLabel: getReportTypeLabel(reportType),
-          branches: branchesToReport,
-          isCombined,
-        };
-      } else if (reportPeriod === 'monthly') {
-        if (!monthYear) {
-          setError('Please select a month and year for the monthly report.');
-          setLoading(false);
-          return;
-        }
-        const [year, month] = monthYear.split('-').map(Number);
-        if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
-          setError('Invalid month and year selected.');
-          setLoading(false);
-          return;
-        }
-        const lastDay = getLastDayOfMonth(year, month);
-
-        const paddedMonth = month.toString().padStart(2, '0');
-        startStr = `${year}-${paddedMonth}-01 00:00:00`;
-        endStr = `${year}-${paddedMonth}-${lastDay} 23:59:59`;
-
-        reportDetails = {
-          type: 'Monthly',
-          month,
-          year,
-          identifier: `${month}-${year}`,
-          reportTypeLabel: getReportTypeLabel(reportType),
-          branches: branchesToReport,
-          isCombined,
-        };
-      } else if (reportPeriod === 'range') {
-        if (!fromDate || !toDate) {
-          setError('Please select both start and end dates for the report.');
-          setLoading(false);
-          return;
-        }
-        const start = new Date(fromDate);
-        const end = new Date(toDate);
-        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-          setError('Invalid dates selected.');
-          setLoading(false);
-          return;
-        }
-        if (start > end) {
-          setError('Start date cannot be after end date.');
-          setLoading(false);
-          return;
-        }
-
-        startStr = `${fromDate} 00:00:00`;
-        endStr = `${toDate} 23:59:59`;
-
-        reportDetails = {
-          type: 'Date Range',
-          fromDate: formatDateDDMMYYYY(fromDate),
-          toDate: formatDateDDMMYYYY(toDate),
-          identifier: `${fromDate}_to_${toDate}`,
-          reportTypeLabel: getReportTypeLabel(reportType),
-          branches: branchesToReport,
-          isCombined,
-        };
+      if (!data || data.length === 0) {
+        return "GNS-00001";
       }
 
-      let { data, error } = { data: [], error: null };
-      let formattedProductIdSummary = null;
-
-      switch (reportType) {
-        case 'sales_orders': {
-          let query = supabase
-            .from('sales_orders')
-            .select('*')
-            .gte('created_at', startStr)
-            .lte('created_at', endStr);
-
-          if (!isCombined) {
-            query = query.in('branch', branchesToReport);
-          }
-
-          ({ data, error } = await query);
-          if (error) throw error;
-          fetchedData = data;
-          break;
-        }
-        case 'work_orders': {
-          let query = supabase
-            .from('work_orders')
-            .select('*')
-            .gte('created_at', startStr)
-            .lte('created_at', endStr);
-
-          if (!isCombined) {
-            query = query.in('branch', branchesToReport);
-          }
-
-          ({ data, error } = await query);
-          if (error) throw error;
-          fetchedData = data;
-          break;
-        }
-        // In the case 'compiled_report' section of handleGenerateReport
-        case 'compiled_report': {
-          console.log("Fetching sales data with params:", { startStr, endStr });
-
-          // Use a more comprehensive query to fetch all necessary data
-          const compiledQuery = supabase
-            .from('sales_orders')
-            .select('*')
-            .gte('created_at', startStr)
-            .lte('created_at', endStr);
-
-          // Apply branch filter if not combined
-          if (!isCombined && branchesToReport.length > 0) {
-            compiledQuery.in('branch', branchesToReport);
-          }
-
-          const { data: compiledData, error: compiledError } = await compiledQuery;
-          if (compiledError) throw compiledError;
-
-          fetchedData = compiledData;
-
-          console.log("Fetched sales data:", fetchedData);
-          console.log("Number of records:", fetchedData?.length);
-
-          // fetchedData = salesData;
-          break;
-        }
-
-
-
-        case 'privilegecards': {
-          let query = supabase
-            .from('privilegecards')
-            .select('*')
-            .gte('created_at', startStr)
-            .lte('created_at', endStr);
-
-          if (!isCombined) {
-            query = query.in('branch', branchesToReport);
-          }
-
-          ({ data, error } = await query);
-          if (error) throw error;
-          fetchedData = data;
-          break;
-        }
-
-
-        case 'insurance_claims': {
-          // 1. First get work orders with is_insurance=true
-          let workOrdersQuery = supabase
-            .from('work_orders')
-            .select(`
-      work_order_id,
-      mr_number,
-      is_insurance,
-      insurance_name,
-      total_amount,
-      employee,
-      branch,
-      created_at,
-      updated_at,
-      consultant_name
-    `)
-            .eq('is_insurance', true)
-            .gte('created_at', startStr)
-            .lte('created_at', endStr);
-
-          if (!isCombined) {
-            workOrdersQuery = workOrdersQuery.in('branch', branchesToReport);
-          }
-
-          const { data: insuredWorkOrders, error: workOrdersError } = await workOrdersQuery;
-          if (workOrdersError) throw workOrdersError;
-
-          // Extract work order IDs to find matching sales orders
-          const workOrderIds = insuredWorkOrders.map(wo => wo.work_order_id).filter(Boolean);
-
-          // 2. Find sales orders linked to these insured work orders
-          let salesOrdersData = [];
-          if (workOrderIds.length > 0) {
-            const { data: salesOrders, error: salesOrdersError } = await supabase
-              .from('sales_orders')
-              .select(`
-        id,
-        sales_order_id,
-        work_order_id,
-        mr_number,
-        total_amount,
-        employee,
-        branch,
-        created_at,
-        updated_at,
-        consultant_name,
-        product_entries
-      `)
-              .in('work_order_id', workOrderIds);
-
-            if (salesOrdersError) throw salesOrdersError;
-            salesOrdersData = salesOrders || [];
-          }
-
-          // 3. Create a map of work orders by work_order_id for easier lookup
-          const workOrdersMap = {};
-          insuredWorkOrders.forEach(wo => {
-            workOrdersMap[wo.work_order_id] = wo;
-          });
-
-          // 4. Create a map of sales orders by work_order_id
-          const salesOrdersMap = {};
-          salesOrdersData.forEach(so => {
-            salesOrdersMap[so.work_order_id] = so;
-          });
-
-          // 5. Format the combined data for the report
-          const formattedClaimsData = [];
-
-          // Add all insured work orders (and their sales order data if available)
-          insuredWorkOrders.forEach(wo => {
-            const salesOrder = salesOrdersMap[wo.work_order_id];
-            formattedClaimsData.push({
-              mr_number: wo.mr_number || 'N/A',
-              insurance_name: wo.insurance_name || 'Unknown',
-              work_order_id: wo.work_order_id,
-              sales_order_id: salesOrder?.sales_order_id || 'N/A',
-              total_amount: (salesOrder?.total_amount || wo.total_amount || 0),
-              approved_amount: salesOrder ? (salesOrder.total_amount || 0) : 0,
-              employee_id: salesOrder?.employee || wo.employee,
-              employees: { name: salesOrder?.consultant_name || wo.consultant_name || 'N/A' },
-              status: salesOrder ? 'processed' : 'pending',
-              branch: wo.branch,
-              created_at: wo.created_at,
-              updated_at: salesOrder?.updated_at || wo.updated_at,
-              data_source: 'work_orders'
-            });
-          });
-
-          fetchedData = formattedClaimsData;
-          break;
-        }
-        case 'modification_reports': {
-          let query = supabase
-            .from('modification_requests')
-            .select('*')
-            .gte('created_at', startStr)
-            .lte('created_at', endStr);
-
-          if (!isCombined) {
-            query = query.in('branch', branchesToReport);
-          }
-
-          ({ data, error } = await query);
-          if (error) throw error;
-          fetchedData = data;
-          break;
-        }
-        // case 'product_sales': {
-        //   // 1. Fetch sales_orders in date range and branch
-        //   let salesQuery = supabase
-        //     .from('sales_orders')
-        //     .select('product_entries, branch, created_at')
-        //     .gte('created_at', startStr)
-        //     .lte('created_at', endStr);
-
-        //   if (!isCombined) {
-        //     salesQuery = salesQuery.in('branch', branchesToReport);
-        //   }
-
-        //   const { data: salesData, error: salesError } = await salesQuery;
-        //   if (salesError) throw salesError;
-
-        //   // 2. Aggregate product sales
-        //   const productSalesMap = {};
-        //   salesData.forEach(order => {
-        //     const entries = order.product_entries || [];
-        //     entries.forEach(item => {
-        //       const pid = item.product_id;
-        //       if (!productSalesMap[pid]) {
-        //         productSalesMap[pid] = {
-        //           product_id: pid,
-        //           quantity: 0,
-        //           total_sales: 0,
-        //         };
-        //       }
-        //       productSalesMap[pid].quantity += Number(item.quantity) || 0;
-        //       productSalesMap[pid].total_sales += (Number(item.price) || 0) * (Number(item.quantity) || 0);
-        //     });
-        //   });
-
-        //   const productIds = Object.keys(productSalesMap).map(Number).filter(id => !isNaN(id));
-        //   if (productIds.length === 0) {
-        //     setError('No product sales found for the selected period and branch.');
-        //     setLoading(false);
-        //     return;
-        //   }
-
-        //   // 3. Fetch product details
-        //   const { data: productsData, error: productsError } = await supabase
-        //     .from('products')
-        //     .select('id, product_id, product_name, mrp, rate, hsn_code')
-        //     .in('id', productIds);
-
-        //   if (productsError) throw productsError;
-
-        //   // 4. Combine product info with sales
-        //   const combinedData = productsData.map(product => ({
-        //     product_id: product.product_id || 'N/A',
-        //     product_name: product.product_name || 'N/A',
-        //     mrp: product.mrp ? Number(product.mrp).toFixed(2) : '0.00',
-        //     rate: product.rate ? Number(product.rate).toFixed(2) : '0.00',
-        //     hsn_code: product.hsn_code || 'N/A',
-        //     quantity_sold: productSalesMap[product.id]?.quantity || 0,
-        //     total_sales: productSalesMap[product.id]?.total_sales.toFixed(2) || '0.00',
-        //   }));
-
-        //   // Sort by product_name
-        //   combinedData.sort((a, b) => a.product_name.localeCompare(b.product_name));
-        //   fetchedData = combinedData;
-        //   break;
-        // }
-
-
-
-        case 'product_sales': {
-          // 1. Fetch sales_orders in date range and branch
-          let salesQuery = supabase
-            .from('sales_orders')
-            .select('product_entries, branch, created_at')
-            .gte('created_at', startStr)
-            .lte('created_at', endStr);
-
-          if (!isCombined) {
-            salesQuery = salesQuery.in('branch', branchesToReport);
-          }
-
-          const { data: salesData, error: salesError } = await salesQuery;
-          if (salesError) throw salesError;
-
-          // 2. Aggregate product sales
-          const productSalesMap = {};
-          salesData.forEach(order => {
-            const entries = order.product_entries || [];
-            entries.forEach(item => {
-              const pid = item.product_id;
-              if (!productSalesMap[pid]) {
-                productSalesMap[pid] = {
-                  product_id: pid,
-                  quantity: 0,
-                  total_sales: 0,
-                };
-              }
-              productSalesMap[pid].quantity += Number(item.quantity) || 0;
-              productSalesMap[pid].total_sales += (Number(item.price) || 0) * (Number(item.quantity) || 0);
-            });
-          });
-
-          // Separate numeric and non-numeric product_ids
-          const numericProductIds = Object.keys(productSalesMap)
-            .map(id => Number(id))
-            .filter(id => !isNaN(id));
-          const nonNumericProductIds = Object.keys(productSalesMap)
-            .filter(id => isNaN(Number(id)));
-
-          let productsData = [];
-          if (numericProductIds.length > 0) {
-            const { data: fetchedProducts, error: productsError } = await supabase
-              .from('products')
-              .select('id, product_id, product_name, mrp, rate, hsn_code')
-              .in('id', numericProductIds);
-            if (productsError) throw productsError;
-            productsData = fetchedProducts;
-          }
-
-          // 3. Combine product info with sales
-          const combinedData = [];
-
-          // Add numeric products from DB
-          productsData.forEach(product => {
-            combinedData.push({
-              product_id: product.product_id || product.id || 'N/A',
-              product_name: product.product_name || 'N/A',
-              mrp: product.mrp ? Number(product.mrp).toFixed(2) : '0.00',
-              rate: product.rate ? Number(product.rate).toFixed(2) : '0.00',
-              hsn_code: product.hsn_code || 'N/A',
-              quantity_sold: productSalesMap[product.id]?.quantity || 0,
-              total_sales: productSalesMap[product.id]?.total_sales.toFixed(2) || '0.00',
-            });
-          });
-
-          // Add non-numeric products (consulting services)
-          nonNumericProductIds.forEach(pid => {
-            combinedData.push({
-              product_id: pid,
-              product_name: CONSULTING_SERVICES[pid] || 'Unknown Service',
-              mrp: '0.00',
-              rate: '0.00',
-              hsn_code: '',
-              quantity_sold: productSalesMap[pid]?.quantity || 0,
-              total_sales: productSalesMap[pid]?.total_sales.toFixed(2) || '0.00',
-            });
-          });
-
-          // Sort by product_name
-          combinedData.sort((a, b) => a.product_name.localeCompare(b.product_name));
-          fetchedData = combinedData;
-          break;
-        }
-
-
-        case 'consolidated': {
-          // Fetch sales and work data first
-          const salesQuery = supabase
-            .from('sales_orders')
-            .select('sales_order_id, work_order_id, mr_number, final_amount, cgst, sgst, total_amount, created_at, updated_at, branch, customer_id, discount, advance_details')
-            .gte('created_at', startStr)
-            .lte('created_at', endStr);
-
-          if (!isCombined) {
-            salesQuery.in('branch', branchesToReport);
-          }
-
-          const { data: salesData, error: salesError } = await salesQuery;
-          if (salesError) throw salesError;
-
-          const workQuery = supabase
-            .from('work_orders')
-            .select('work_order_id, advance_details, mr_number, created_at, updated_at, branch, customer_id, total_amount, cgst, sgst, discount_amount')
-            .gte('created_at', startStr)
-            .lte('created_at', endStr);
-
-          if (!isCombined) {
-            workQuery.in('branch', branchesToReport);
-          }
-
-          const { data: workData, error: workError } = await workQuery;
-          if (workError) throw workError;
-
-          // Extract unique MR numbers from sales and work orders
-          const mrNumbers = new Set();
-          salesData.forEach(sale => {
-            if (sale.mr_number) mrNumbers.add(String(sale.mr_number));
-          });
-          workData.forEach(work => {
-            if (work.mr_number) mrNumbers.add(String(work.mr_number));
-          });
-
-          const mrNumbersArray = Array.from(mrNumbers);
-          console.log(`Found ${mrNumbersArray.length} unique MR numbers to look up`);
-
-          // Only fetch patients that match these MR numbers
-          const { data: patientsData, error: patientsError } = await supabase
-            .from('patients')
-            .select('mr_number, name')
-            .in('mr_number', mrNumbersArray);
-
-          if (patientsError) throw patientsError;
-          console.log(`Fetched ${patientsData?.length || 0} matching patient records`);
-
-          // Create patient map using fetched data
-          const patientMap = {};
-          patientsData.forEach(patient => {
-            if (patient.mr_number) {
-              patientMap[String(patient.mr_number)] = patient.name;
-            }
-          });
-
-          // Continue with the rest of the code...
-          // Track which work orders have sales orders
-          const workOrdersWithSales = new Set();
-          salesData.forEach(sale => {
-            if (sale.work_order_id) {
-              workOrdersWithSales.add(sale.work_order_id);
-            }
-          });
-
-          // Filter work orders to include only those without corresponding sales orders
-          const filteredWorkData = workData.filter(work => !workOrdersWithSales.has(work.work_order_id));
-
-          // Identify OPD sales
-          const opdSales = salesData.filter(sale =>
-            sale.work_order_id?.startsWith('OPW-') ||
-            sale.sales_order_id?.startsWith('OPS-')
-          );
-
-          const totalOPD = opdSales.reduce((sum, order) =>
-            sum + (parseFloat(order.total_amount) || 0), 0
-          );
-
-          // Add totalOPD to reportDetails
-          reportDetails.totalOPD = totalOPD;
-
-          // Create consolidated sales data
-          const consolidatedSales = salesData.map(sale => {
-            let customerName = 'N/A';
-            const totalGST = (parseFloat(sale.cgst) || 0) + (parseFloat(sale.sgst) || 0);
-
-            return {
-              sales_order_id: sale.sales_order_id || 'N/A',
-              work_order_id: sale.work_order_id || 'N/A',
-              mr_number: sale.mr_number || 'N/A',
-              total_amount: parseFloat(sale.total_amount) || 0,
-              total_gst: totalGST,
-              discount: parseFloat(sale.discount) || 0,
-              advance_collected: parseFloat(sale.advance_details) || 0,
-              balance_collected: parseFloat(sale.total_amount || 0) - parseFloat(sale.advance_details || 0),
-              total_collected: parseFloat(sale.total_amount) || 0,
-              patient_customer_name: patientMap[sale.mr_number] || customerName || 'N/A',
-              branch: sale.branch || 'N/A',
-              created_at: sale.created_at ? formatDateDDMMYYYY(sale.created_at, true) : 'N/A',
-              updated_at: sale.updated_at ? formatDateDDMMYYYY(sale.updated_at, true) : 'N/A',
-              raw_created_at: sale.created_at // Keep original date for sorting
-            };
-          });
-
-          // Create consolidated work orders (using actual values from work orders, not zeros)
-          const consolidatedWork = filteredWorkData.map(work => {
-            let customerName = 'N/A';
-            const totalGST = (parseFloat(work.cgst) || 0) + (parseFloat(work.sgst) || 0);
-            const workTotalAmount = parseFloat(work.total_amount) || 0;
-            const advanceCollected = parseFloat(work.advance_details) || 0;
-
-            return {
-              sales_order_id: 'N/A',
-              work_order_id: work.work_order_id || 'N/A',
-              mr_number: work.mr_number || 'N/A',
-              total_amount: workTotalAmount,
-              total_gst: totalGST,
-              discount: parseFloat(work.discount_amount) || 0,
-              advance_collected: advanceCollected,
-              balance_collected: workTotalAmount - advanceCollected,
-              total_collected: advanceCollected, // For work orders, only advance is collected
-              patient_customer_name: patientMap[work.mr_number] || customerName || 'N/A',
-              branch: work.branch || 'N/A',
-              created_at: work.created_at ? formatDateDDMMYYYY(work.created_at, true) : 'N/A',
-              updated_at: work.updated_at ? formatDateDDMMYYYY(work.updated_at, true) : 'N/A',
-              raw_created_at: work.created_at // Keep original date for sorting
-            };
-          });
-
-          const consolidatedData = [...consolidatedSales, ...consolidatedWork];
-
-          // Sort by created_at in descending order (latest first)
-          consolidatedData.sort((a, b) => {
-            if (!a.raw_created_at) return 1;
-            if (!b.raw_created_at) return -1;
-            return new Date(b.raw_created_at) - new Date(a.raw_created_at);
-          });
-
-          fetchedData = consolidatedData;
-          break;
-        }
-
-        // ...existing code...
-        case 'stock_report': {
-          const { data: productsData, error: productsError } = await supabase
-            .from('products')
-            .select('*');
-
-          if (productsError) throw productsError;
-
-          const stockQuery = supabase.from('stock').select('*');
-          if (!isCombined) {
-            stockQuery.in('branch_code', branchesToReport);
-          }
-
-          const { data: stockData, error: stockError } = await stockQuery;
-          if (stockError) throw stockError;
-
-          const combinedData = productsData.map(product => {
-            const pid = product.id;
-            const productStock = stockData.filter(stock => stock.product_id === pid);
-            const currentStock = productStock.reduce((acc, curr) => acc + (curr.quantity || 0), 0);
-
-            return {
-              product_id: product.product_id || 'N/A',
-              product_name: product.product_name || 'N/A',
-              mrp: product.mrp ? Number(product.mrp).toFixed(2) : '0.00',
-              rate: product.rate ? Number(product.rate).toFixed(2) : '0.00',
-              hsn_code: product.hsn_code || 'N/A',
-              total_sold: 0,
-              current_stock: currentStock,
-            };
-          });
-
-          const salesQuery = supabase
-            .from('sales_orders')
-            .select('items')
-            .gte('created_at', startStr)
-            .lte('created_at', endStr);
-
-          if (!isCombined) {
-            salesQuery.in('branch', branchesToReport);
-          }
-
-          const { data: salesData, error: salesError } = await salesQuery;
-          if (salesError) throw salesError;
-
-          const workQuery = supabase
-            .from('work_orders')
-            .select('product_entries')
-            .gte('created_at', startStr)
-            .lte('created_at', endStr);
-
-          if (!isCombined) {
-            workQuery.in('branch', branchesToReport);
-          }
-
-          const { data: workData, error: workError } = await workQuery;
-          if (workError) throw workError;
-
-          const salesAggregated = {};
-          salesData.forEach(sale => {
-            const items = sale.items || [];
-            items.forEach(item => {
-              const pid = item.id;
-              const quantity = parseInt(item.quantity, 10) || 0;
-              if (!salesAggregated[pid]) {
-                salesAggregated[pid] = 0;
-              }
-              salesAggregated[pid] += quantity;
-            });
-          });
-
-          workData.forEach(work => {
-            const products = work.product_entries || [];
-            products.forEach(product => {
-              const pid = product.id;
-              const quantity = parseInt(product.quantity, 10) || 0;
-              if (!salesAggregated[pid]) {
-                salesAggregated[pid] = 0;
-              }
-              salesAggregated[pid] += quantity;
-            });
-          });
-
-          combinedData.forEach(product => {
-            const matchingProduct = productsData.find(p => p.product_id === product.product_id);
-            if (matchingProduct) {
-              const pid = matchingProduct.id;
-              product.total_sold = salesAggregated[pid] || 0;
-            }
-          });
-
-          combinedData.sort((a, b) => a.product_name.localeCompare(b.product_name));
-          fetchedData = combinedData;
-          break;
-        }
-        case 'purchase_report': {
-          let purchaseQuery = supabase
-            .from('purchases')
-            .select('*')
-            .gte('created_at', startStr)
-            .lte('created_at', endStr);
-
-          if (!isCombined) {
-            purchaseQuery = purchaseQuery.in('branch_code', branchesToReport);
-          }
-
-          if (selectedPurchaseFrom !== 'All') {
-            purchaseQuery = purchaseQuery.eq('purchase_from', selectedPurchaseFrom);
-          }
-
-          ({ data, error } = await purchaseQuery);
-          if (error) throw error;
-          fetchedData = data;
-          break;
-        }
-        case 'stock_assignments': {
-          const query = supabase
-            .from('stock_assignments')
-            .select(`
-              *,
-              products(product_name)
-            `)
-            .gte('assigned_at', startStr)
-            .lte('assigned_at', endStr);
-
-          if (!isCombined) {
-            const branchesFilter = selectedBranches.map(branch => `"${branch}"`).join(',');
-            query.or(`from_branch_code.in.(${branchesFilter}),to_branch_code.in.(${branchesFilter})`);
-          }
-
-          ({ data, error } = await query);
-          if (error) throw error;
-          fetchedData = data;
-          break;
-        }
-        case 'credit_debit_notes': {
-          const query = supabase
-            .from('notes')
-            .select(`
-              *,
-              products (product_name)
-            `)
-            .gte('date', startStr)
-            .lte('date', endStr);
-
-          if (!isCombined) {
-            query.in('branch_code', branchesToReport);
-          }
-
-          ({ data, error } = await query);
-          if (error) throw error;
-          fetchedData = data;
-          break;
-        }
-        default:
-          setError('Invalid report type selected.');
-          setLoading(false);
-          return;
+      // Extract number from last ID and increment
+      const lastId = data[0].sales_order_id;
+      const lastNumber = parseInt(lastId.split("-")[1], 10);
+      const newNumber = (lastNumber + 1).toString().padStart(5, "0");
+      return `GNS-${newNumber}`;
+    } catch (error) {
+      console.error("Error generating general sales ID:", error);
+      return "GNS-00001";
+    }
+  };
+
+  // Function to create a new customer
+  const saveCustomerDetails = async (customerDetails) => {
+    const { name, phone_number, address, gender, age } = customerDetails;
+
+    const { data, error } = await supabase
+      .from("customers")
+      .insert({
+        name,
+        phone_number,
+        address,
+        age: parseInt(age, 10),
+        gender,
+      })
+      .select();
+
+    if (error) {
+      console.error("Error saving customer details:", error);
+      throw error; // Stop further execution on failure
+    }
+    return data; // Returns an array of inserted records
+  };
+
+  // Fetch Employees based on branch
+  const fetchEmployees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("employees")
+        .select("name")
+        .eq("branch", branch); // Filter by branch if necessary
+
+      if (error) {
+        console.error("Error fetching employees:", error.message);
+      } else {
+        setEmployees(data.map((emp) => emp.name)); // Extract only names
+      }
+    } catch (err) {
+      console.error("Unexpected error fetching employees:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (branch) {
+      fetchEmployees(); // Fetch employees when `branch` is available
+    }
+  }, [branch]);
+
+  // Validation for Employee Dropdown
+  const validateEmployeeSelection = () => {
+    if (!employee) {
+      updateSalesOrderForm({
+        validationErrors: {
+          ...validationErrors,
+          employee: "Employee selection is required.",
+        },
+      });
+      employeeRef.current?.focus();
+    } else {
+      const updatedErrors = { ...validationErrors };
+      delete updatedErrors.employee;
+      updateSalesOrderForm({
+        validationErrors: updatedErrors,
+      });
+    }
+  };
+
+  // Utility function to get the current financial year
+  const getFinancialYear = () => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1; // Months are zero-based
+
+    let financialYearStart;
+    let financialYearEnd;
+
+    if (currentMonth >= 4) {
+      // If the month is April or after, the financial year starts this year
+      financialYearStart = currentYear % 100;
+      financialYearEnd = (currentYear + 1) % 100;
+    } else {
+      // If the month is before April, the financial year started last year
+      financialYearStart = (currentYear - 1) % 100;
+      financialYearEnd = currentYear % 100;
+    }
+
+    return `${financialYearStart}-${financialYearEnd}`;
+  };
+
+  const processWorkOrder = (workOrderId) => {
+    console.log("Processing work order:", workOrderId);
+
+    if (workOrderId.startsWith("OPW")) {
+      // Action for OPW work orders
+      console.log("Processing OPW work order:", workOrderId);
+      // Add specific logic for OPW
+    } else if (workOrderId.startsWith("CR")) {
+      // Action for CR work orders
+      console.log("Processing CR work order:", workOrderId);
+      // Add specific logic for CR
+    } else {
+      // Default action for other work orders
+      console.log("Unknown work order type:", workOrderId);
+      // Add fallback logic if needed
+    }
+  };
+
+  const handleProceedWithoutWorkOrder = async () => {
+    const generalSalesId = await generateGeneralSalesId();
+
+    setHasProceededWithoutWorkOrder(true);
+
+
+    updateSalesOrderForm({
+      step: 1,
+      salesOrderId: generalSalesId,
+      selectedWorkOrder: null,
+      workOrderId: null,
+      // Reset any work order related fields
+      workOrderDiscount: 0,
+      advanceDetails: "",
+    });
+  };
+
+
+
+  const generateSalesOrderId = async (branch) => {
+    try {
+      console.log("Generating unique sales order ID...");
+
+      if (!branch) {
+        console.error("Branch is undefined. Cannot generate Sales Order ID.");
+        return null;
       }
 
-      if (fetchedData.length === 0) {
-        setError('No records found for the selected period and branch.');
-        setLoading(false);
+      // Extract the OP number from the work order if available
+      let opNumber = "01"; // Default OP Number
+      if (selectedWorkOrder && selectedWorkOrder.work_order_id) {
+        const workOrderId = selectedWorkOrder.work_order_id;
+
+        // Try to extract OP number from work order ID format
+        let match = workOrderId.match(/CR-(\d+)-/);
+        if (!match) {
+          match = workOrderId.match(/OPW-(\d+)-/);
+        }
+
+        if (match && match[1]) {
+          opNumber = match[1];
+          console.log("Extracted OP Number:", opNumber);
+        }
+      }
+
+      // Call the database function to get next ID atomically
+      const { data: nextId, error } = await supabase.rpc('get_next_sales_order_id', {
+        branch_code: branch,
+        role_code: subRole  // This can be null
+      });
+
+      if (error) {
+        console.error("Error generating Sales Order ID:", error);
+        return null;
+      }
+
+      console.log("Database returned next ID:", nextId);
+
+      // Determine prefix based on work order type
+      let newSalesOrderId;
+      if (selectedWorkOrder) {
+        const workOrderId = selectedWorkOrder.work_order_id;
+
+        if (workOrderId && workOrderId.startsWith("OPW")) {
+          // Format for OPW work orders
+          console.log("Generating ID for OPW work order");
+
+          newSalesOrderId = `OPS-${opNumber}-${String(nextId).padStart(3, "0")}`;
+        } else if (workOrderId && workOrderId.startsWith("CR")) {
+          // Format for CR work orders
+          newSalesOrderId = `CRS-${opNumber}-${String(nextId).padStart(3, "0")}`;
+        } else {
+          // Default format if work order type cannot be determined
+          console.log("Generating ID for general sales order");
+          newSalesOrderId = `GNS-${String(nextId).padStart(5, "0")}`;
+        }
+      } else {
+        // For general sales (no work order)
+        newSalesOrderId = `GNS-${String(nextId).padStart(5, "0")}`;
+      }
+
+      console.log("Generated Sales Order ID:", newSalesOrderId);
+
+      // Update the sales order form with the new ID
+      updateSalesOrderForm({ salesOrderId: newSalesOrderId });
+
+      return newSalesOrderId;
+    } catch (error) {
+      console.error("Error generating sales order ID:", error);
+      return null;
+    }
+  };
+
+
+
+
+  const fetchSalesOrderId = async () => {
+    if (branch && !isEditing) {
+      // Only generate ID if not editing
+      const newSalesOrderId = await generateSalesOrderId(branch); // Pass branch here
+      if (newSalesOrderId) {
+        updateSalesOrderForm({ salesOrderId: newSalesOrderId });
+        updateSalesOrderForm({
+          validationErrors: {
+            ...validationErrors,
+            generalError: "",
+          },
+        });
+      } else {
+        updateSalesOrderForm({
+          validationErrors: {
+            ...validationErrors,
+            generalError: "Failed to generate ID",
+          },
+        });
+      }
+    }
+  };
+
+  const fetchProductSuggestions = async (query, type) => {
+    if (!query) return [];
+    try {
+      const column = type === "id" ? "product_id" : "product_name";
+      const { data, error } = await supabase
+        .from("products")
+        .select(`product_id, product_name, mrp, hsn_code`)
+        .ilike(column, `%${query}%`)
+        .limit(10);
+
+      if (error) {
+        console.error(`Error fetching ${type} suggestions:`, error.message);
+        return [];
+      }
+      return data || [];
+    } catch (err) {
+      console.error(`Unexpected error fetching ${type} suggestions:`, err);
+      return [];
+    }
+  };
+
+  // Function to handle changes in product fields
+  const handleProductChange = (index, field, value) => {
+    const updatedProductEntries = [...productEntries];
+    updatedProductEntries[index][field] = value;
+    updateSalesOrderForm({ productEntries: updatedProductEntries });
+
+    // If the product_id is changed, fetch the new product details
+    if (field === "product_id") {
+      handleProductInputChange(index, value);
+    }
+
+    validateField(index, field);
+  };
+
+  // Function to handle product ID input changes and fetch product details
+  const handleProductInputChange = async (index, value) => {
+    if (!branch) {
+      console.error("Branch is undefined. Cannot fetch product details.");
+      const updatedEntries = [...productEntries];
+      updatedEntries[index] = {
+        ...updatedEntries[index],
+        stock: 0, // Assume no stock if branch is missing
+      };
+      updateSalesOrderForm({ productEntries: updatedEntries });
+      return;
+    }
+
+    const productDetails = await fetchProductDetailsFromDatabase(value, branch);
+    if (productDetails) {
+      const updatedEntries = [...productEntries];
+      updatedEntries[index] = {
+        id: productDetails.id, // Use integer id for stock operations
+        product_id: productDetails.product_id, // Keep string product_id for display
+        name: productDetails.product_name,
+        price: productDetails.mrp || "",
+        stock: productDetails.stock || 0,
+        quantity: updatedEntries[index].quantity || "",
+        hsn_code: productDetails.hsn_code || "",
+      };
+      updateSalesOrderForm({ productEntries: updatedEntries });
+
+      if (productDetails.stock > 0) {
+        setTimeout(() => {
+          quantityRefs.current[index]?.focus();
+        }, 100);
+      }
+    } else {
+      const updatedEntries = [...productEntries];
+      updatedEntries[index] = {
+        ...updatedEntries[index],
+        stock: 0, // Assume no stock if fetching fails
+      };
+      updateSalesOrderForm({ productEntries: updatedEntries });
+    }
+  };
+
+  const fetchExistingSalesOrder = useCallback(
+    async (orderId) => {
+      try {
+        console.log(`Fetching sales order with ID: ${orderId}`);
+        const { data, error } = await supabase
+          .from("sales_orders")
+          .select("*")
+          .eq("sales_order_id", orderId)
+          .single();
+
+        if (error || !data) {
+          console.error("Sales Order Not Found:", error?.message || "No data");
+          updateSalesOrderForm({
+            validationErrors: {
+              ...validationErrors,
+              generalError: "Sales Order Not Found.",
+            },
+          });
+          return;
+        }
+
+        console.log("Fetched Sales Order Data:", data);
+
+        // Normalize product entries with correct product IDs and stock
+        const normalizedProducts = await normalizeWorkOrderProducts(
+          data.items, // Assuming 'items' holds product_entries
+          branch
+        );
+
+        console.log("Normalized Products:", normalizedProducts);
+
+        // Update global form state with fetched data
+        updateSalesOrderForm({
+          productEntries: normalizedProducts,
+          salesOrderId: data.sales_order_id, // Ensure salesOrderId is updated
+          mrNumber: data.mr_number || "",
+          customerId: data.customer_id || "", // Add customerId to the state
+          advanceDetails: data.advance_details
+            ? data.advance_details.toString()
+            : "",
+          employee: data.employee || "",
+          paymentMethod: data.payment_method || "",
+          loyaltyPoints: data.loyalty_points_redeemed || 0,
+          hasMrNumber: data.hasMr_number ? "yes" : "no",
+          discount: data.discount ? data.discount.toString() : "",
+          privilegeCard: data.pc_number ? true : false,
+          privilegeCardNumber: data.pc_number || "",
+          isEditing: true, // Indicates editing mode
+          validationErrors: {}, // Clear validation errors
+          step: 1, // Move to the next step (adjust as per your step logic)
+        });
+
+        setOriginalProductEntries(normalizedProducts); // Store original entries
+
+        // Fetch privilege card details if applicable
+        if (data.pc_number) {
+          const { data: privilegeData, error: privilegeError } = await supabase
+            .from("privilegecards")
+            .select("*")
+            .eq("pc_number", data.pc_number)
+            .single();
+
+          if (privilegeError || !privilegeData) {
+            updateSalesOrderForm({ privilegeCardDetails: null });
+            updateSalesOrderForm({
+              validationErrors: {
+                ...validationErrors,
+                generalError:
+                  "Privilege Card not found for the given PC Number.",
+              },
+            });
+          } else {
+            updateSalesOrderForm({
+              privilegeCardDetails: privilegeData,
+              isPinVerified: true,
+            });
+          }
+        }
+
+        updateSalesOrderForm({
+          validationErrors: { ...validationErrors, generalError: "" },
+        });
+
+        // Fetch customer details via customer_id
+        if (data.customer_id) {
+          const customer = await fetchCustomerById(data.customer_id.trim());
+
+          if (customer) {
+            updateSalesOrderForm({
+              patientDetails: {
+                name: customer.name,
+                age: customer.age,
+                condition: customer.condition || "N/A", // Assuming condition is applicable
+                phone_number: customer.phone_number || "N/A",
+                gender: customer.gender || "N/A",
+                address: customer.address || "N/A",
+              },
+              validationErrors: {
+                ...validationErrors,
+                generalError: "",
+              },
+            });
+          } else {
+            updateSalesOrderForm({
+              patientDetails: null,
+              validationErrors: {
+                ...validationErrors,
+                generalError: "No customer found with the provided ID.",
+              },
+            });
+          }
+        } else {
+          updateSalesOrderForm({
+            patientDetails: null,
+            validationErrors: {
+              ...validationErrors,
+              generalError:
+                "Selected work order doesn't contain a Customer ID.",
+            },
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching sales order:", error);
+        updateSalesOrderForm({
+          validationErrors: {
+            ...validationErrors,
+            generalError: "Failed to fetch sales order details.",
+          },
+        });
+      }
+    },
+    [updateSalesOrderForm, validationErrors, branch]
+  );
+
+  // New helper function to fetch customer by customer_id
+  const fetchCustomerById = async (customerId) => {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("*")
+      .eq("customer_id", customerId)
+      .single();
+
+    if (error) {
+      console.error("Error fetching customer by ID:", error.message);
+      return null;
+    }
+    return data;
+  };
+
+  useEffect(() => {
+    if (orderId) {
+      // Fetch the sales order data using orderId
+      fetchExistingSalesOrder(orderId);
+    }
+  }, [orderId]);
+
+
+  const {
+    subtotalWithGST,
+    subtotalWithoutGST, // Add this line
+    totalDiscount,
+    amountAfterDiscount,
+    taxableValue,
+    gstAmount,
+    cgstAmount,
+    sgstAmount,
+    advance,
+    balanceDue,
+    privilegeDiscount,
+    finalAmount,
+    insuranceDeduction,
+  } = useMemo(() => {
+    return calculateAmounts(
+      productEntries,
+      advanceDetails,
+      discount, // salesDiscountAmount
+      workOrderDiscount, // workOrderDiscountAmount
+      privilegeCard,
+      privilegeCardDetails,
+      redeemPointsAmount,
+      loyaltyPoints,
+      salesOrderForm.insuranceInfo // Pass insurance info here
+
+    );
+  }, [
+    productEntries,
+    advanceDetails,
+    discount,
+    workOrderDiscount,
+    privilegeCard,
+    privilegeCardDetails,
+    redeemPointsAmount,
+    loyaltyPoints,
+    salesOrderForm.insuranceInfo,
+  ]);
+
+  // Function to fetch patient by MR number
+  // Function to fetch patient by MR number
+  const fetchPatientByMRNumber = async (mrNumber) => {
+    const { data, error } = await supabase
+      .from("patients")
+      .select("*")
+      .eq("mr_number", mrNumber)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error fetching patient details:", error.message);
+      return null;
+    }
+    return data;
+  };
+
+  // Function to remove a product entry
+  const removeProductEntry = (index) => {
+    const updatedEntries = productEntries.filter((_, i) => i !== index);
+    updateSalesOrderForm({ productEntries: updatedEntries });
+    const updatedOriginalEntries = originalProductEntries.filter(
+      (_, i) => i !== index
+    );
+    setOriginalProductEntries(updatedOriginalEntries); // Update original entries accordingly
+  };
+
+  // Function to fetch privilege card by pc_number
+  const handleFetchPrivilegeCardByNumber = async () => {
+    try {
+      const pcNumber = salesOrderForm.privilegeCardNumber?.trim();
+
+      if (!pcNumber) {
+        updateSalesOrderForm({
+          validationErrors: {
+            ...validationErrors,
+            privilegeCardNumber: "Privilege Card Number is required.",
+          },
+        });
+        privilegeCardRef.current?.focus();
         return;
       }
 
-      generatePDF(fetchedData, reportDetails, reportType, formattedProductIdSummary);
-      setSuccess('Report generated successfully!');
-    } catch (err) {
-      console.error(err);
-      setError('Failed to generate report. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [reportType, reportPeriod, date, monthYear, fromDate, toDate, selectedBranches, isCombined, isEmployee, userBranch, patients, customers, selectedPurchaseFrom]);
+      const { data, error } = await supabase
+        .from("privilegecards")
+        .select("*")
+        .eq("pc_number", pcNumber)
+        .single();
 
-  const getReportTypeLabel = (reportType) => {
-    switch (reportType) {
-      case 'sales_orders':
-        return 'Sales Orders';
-      case 'compiled_report':
-        return 'Compiled Report';
-      case 'work_orders':
-        return 'Work Orders';
-      case 'privilegecards':
-        return 'Privilege Cards';
-      case 'product_sales':
-        return 'Product Sales';
-      case 'modification_reports':
-        return 'Modification Reports';
-      case 'consolidated':
-        return 'Consolidated';
-      case 'stock_report':
-        return 'Stock Report';
-      case 'purchase_report':
-        return 'Purchase Report';
-      case 'stock_assignments':
-        return 'Stock Assignments';
-      case 'credit_debit_notes':
-        return 'Credit and Debit Note';
-      default:
-        return '';
-    }
-  };
-
-  // Function to generate PDF
-  const generatePDF = (data, reportDetails, reportType, formattedProductIdSummary) => {
-    const doc = new jsPDF({
-      orientation: 'landscape', // Landscape orientation
-      unit: 'mm',
-      format: 'a4', // Changed to A4 for more space
-    });
-    doc.setFont('Helvetica', '');
-
-    // Add Header
-    addHeader(doc, logoDataUrl, reportDetails);
-
-
-
-    // Determine table columns based on report type
-    let tableColumn = [];
-    switch (reportType) {
-      case 'sales_orders':
-        tableColumn = isEmployee ? [
-          'Sales Order ID',
-          'MR Number',
-          'Is B2B',
-          'Sale Value',
-          'CGST',
-          'SGST',
-          'Total Amount',
-          'Advance Paid',
-          'Balance Due',
-          'Employee',
-          'Payment Method',
-          // 'Loyalty Points Redeemed',
-          // 'Loyalty Points Added',
-        ] : [
-          'Sales Order ID',
-          'MR Number',
-          'Is B2B',
-          'Sale Value',
-          'CGST',
-          'SGST',
-          'Total Amount',
-          'Advance Paid',
-          'Balance Due',
-          'Employee',
-          'Payment Method',
-          // 'Loyalty Points Redeemed',
-          // 'Loyalty Points Added',
-          'Created At',
-          'Updated At',
-        ];
-        break;
-      case 'compiled_report':
-        tableColumn = ['Description', 'Amount'];
-        break;
-      case 'insurance_claims':
-        tableColumn = isEmployee ? [
-          'MR Number',
-          'Insurance Name',
-          'Total Amount',
-          'Approved Amount',
-          'Status',
-          'Branch',
-          'Created At',
-        ] : [
-          'MR Number',
-          'Insurance Name',
-          'Total Amount',
-          'Approved Amount',
-          'Employee',
-          'Status',
-          'Branch',
-          'Created At',
-          'Updated At',
-        ];
-        break;
-
-      case 'work_orders':
-        tableColumn = isEmployee ? [
-          'Work Order ID',
-          'Advance Details',
-          'Due Date',
-          'MR Number',
-          'Employee',
-          'Payment Method',
-          'Total Amount',
-          'CGST',
-          'SGST',
-          'Is B2B',
-        ] : [
-          'Work Order ID',
-          'Advance Details',
-          'Due Date',
-          'MR Number',
-          'Employee',
-          'Payment Method',
-          'Total Amount',
-          'CGST',
-          'SGST',
-          'Is B2B',
-          'Created At',
-          'Updated At',
-          'Branch',
-        ];
-        break;
-      case 'privilegecards':
-        tableColumn = isEmployee ? [
-          'PC Number',
-          'Customer Name',
-          'Phone Number',
-          'Top-Up Amount',
-          'Loyalty Points',
-          'Card Tier',
-          'Branch',
-          'Employee',
-        ] : [
-          'PC Number',
-          'Customer Name',
-          'Phone Number',
-          'Top-Up Amount',
-          'Loyalty Points',
-          'Card Tier',
-          'Created At',
-          'Branch',
-          'Employee',
-        ];
-        break;
-
-      case 'modification_reports':
-        tableColumn = isEmployee ? [
-          'Request ID',
-          'Order ID',
-          'Order Type',
-          'Employee Name',
-          'Modification Type',
-          'Modification Reason',
-          'Status',
-          'Rejection Reason',
-        ] : [
-          'Request ID',
-          'Order ID',
-          'Order Type',
-          'Employee Name',
-          'Modification Type',
-          'Modification Reason',
-          'Status',
-          'Rejection Reason',
-          'Created At',
-          'Updated At',
-        ];
-        break;
-      case 'product_sales':
-        tableColumn = [
-          'Service Name',
-          'MRP',
-          'Rate',
-          'Quantity Sold',
-          'Total Sales',
-        ];
-        break;
-      case 'consolidated':
-        tableColumn = isEmployee ? [
-          'Sales Order ID',
-          'Work Order ID',
-          'MR Number',
-          'Total Amount',
-          'Total GST',
-          'Discount',
-          'Advance Collected',
-          'Balance Collected',
-          'Total Collected',
-          'Patient/Customer Name',
-          'Branch',
-        ] : [
-          'Sales Order ID',
-          'Work Order ID',
-          'MR Number',
-          'Total Amount',
-          'Total GST',
-          'Discount',
-          'Advance Collected',
-          'Balance Collected',
-          'Total Collected',
-          'Patient/Customer Name',
-          'Branch',
-          'Created At',
-          'Updated At',
-        ];
-        break;
-      case 'stock_report':
-        tableColumn = [
-          'Product ID',
-          'Product Name',
-          'MRP',
-          'Rate',
-          'HSN Code',
-          'Total Sold',
-          'Current Stock',
-        ];
-        break;
-      case 'purchase_report':
-        tableColumn = isEmployee ? [
-          'Purchase ID',
-          'Product ID',
-          'Branch Code',
-          'Quantity',
-          'MRP',
-          'Purchase From',
-          'Bill Number',
-          'Bill Date',
-          'Created At',
-          'Updated At',
-          'Employee Name',
-        ] : [
-          'Purchase ID',
-          'Product ID',
-          'Branch Code',
-          'Quantity',
-          'Party Rate',
-          'MRP',
-          'Purchase From',
-          'Bill Number',
-          'Bill Date',
-          'Created At',
-          'Updated At',
-          'Employee Name',
-        ];
-        break;
-      case 'stock_assignments':
-        tableColumn = [
-          'Product ID',
-          'Product Name',
-          'From Branch',
-          'To Branch',
-          'Quantity',
-          'Notes',
-          'Rate',
-          'MRP',
-          'Assigned At',
-        ];
-        break;
-      case 'credit_debit_notes':
-        tableColumn = isEmployee ? [
-          'Note ID',
-          'Note Type',
-          'Product ID',
-          'Product Name',
-          'Branch Code',
-          'Quantity',
-          'Client Name',
-          'Client Address',
-          'Date',
-          'Reason',
-          'Order ID',
-        ] : [
-          'Note ID',
-          'Note Type',
-          'Product ID',
-          'Product Name',
-          'Branch Code',
-          'Quantity',
-          'Client Name',
-          'Client Address',
-          'Date',
-          'Reason',
-          'Order ID',
-          'Created At',
-          'Updated At',
-        ];
-        break;
-      default:
-        tableColumn = [];
-    }
-
-    // Prepare table rows
-    let tableRows = [];
-    switch (reportType) {
-      case 'sales_orders':
-        tableRows = isEmployee ? data.map((record) => [
-          record.sales_order_id || 'N/A',
-          record.mr_number || 'N/A',
-          record.is_b2b ? 'Yes' : 'No',
-          record.subtotal ? Number(record.subtotal).toFixed(2) : '0.00',
-          record.cgst ? Number(record.cgst).toFixed(2) : '0.00',
-          record.sgst ? Number(record.sgst).toFixed(2) : '0.00',
-          record.total_amount ? Number(record.total_amount).toFixed(2) : '0.00',
-          record.advance_details ? Number(record.advance_details).toFixed(2) : '0.00',
-          record.final_amount !== undefined
-            ? Number(record.final_amount).toFixed(2)
-            : '0.00', // Balance Due
-          record.employee || 'N/A',
-          record.payment_method || 'N/A',
-          // record.loyalty_points_redeemed !== undefined
-          //   ? record.loyalty_points_redeemed
-          //   : '0',
-          // record.loyalty_points_added !== undefined
-          //   ? record.loyalty_points_added
-          //   : '0',
-        ]) : data.map((record) => [
-          record.sales_order_id || 'N/A',
-          record.mr_number || 'N/A',
-          record.is_b2b ? 'Yes' : 'No',
-          record.subtotal ? Number(record.subtotal).toFixed(2) : '0.00',
-          record.cgst ? Number(record.cgst).toFixed(2) : '0.00',
-          record.sgst ? Number(record.sgst).toFixed(2) : '0.00',
-          record.total_amount ? Number(record.total_amount).toFixed(2) : '0.00',
-          record.advance_details ? Number(record.advance_details).toFixed(2) : '0.00',
-          record.final_amount !== undefined
-            ? Number(record.final_amount).toFixed(2)
-            : '0.00', // Balance Due
-          record.employee || 'N/A',
-          record.payment_method || 'N/A',
-          // record.loyalty_points_redeemed !== undefined
-          //   ? record.loyalty_points_redeemed
-          //   : '0',
-          // record.loyalty_points_added !== undefined
-          //   ? record.loyalty_points_added
-          //   : '0',
-          record.created_at
-            ? formatDateDDMMYYYY(record.created_at, true)
-            : 'N/A',
-          record.updated_at
-            ? formatDateDDMMYYYY(record.updated_at, true)
-            : 'N/A',
-        ]);
-        break;
-      case 'compiled_report':
-        console.log('Processing data for compiled report:', data);
-
-        // Debug the categories
-        // const opdSales = data.filter(sale =>
-        //   sale.work_order_id?.startsWith('OPW-') ||
-        //   sale.sales_order_id?.startsWith('OPS-')
-        // );
-
-        const opdSales = data.filter(sale =>
-          sale.work_order_id?.startsWith('OPW-')
-        );
-
-        const counsellingSales = data.filter(sale =>
-          sale.work_order_id?.startsWith('CR-')
-        );
-
-        const consultationSales = data.filter(sale =>
-          sale.sales_order_id?.startsWith('CNS-')
-        );
-
-        console.log('OPD sales:', opdSales);
-        console.log('Counselling sales:', counsellingSales);
-        console.log('Consultation sales:', consultationSales);
-
-        const totalOPD = opdSales.reduce((sum, sale) =>
-          sum + (parseFloat(sale.total_amount) || 0), 0);
-
-        const totalCounselling = counsellingSales.reduce((sum, sale) =>
-          sum + (parseFloat(sale.total_amount) || 0), 0);
-
-        const totalConsultation = consultationSales.reduce((sum, sale) =>
-          sum + (parseFloat(sale.total_amount) || 0), 0);
-
-        // Add total calculation
-        const grandTotal = totalOPD + totalCounselling + totalConsultation;
-
-        tableRows = [
-          ['Total Counselling Sales Amount', totalCounselling.toFixed(2)],
-          ['Total OPD Sales Amount', totalOPD.toFixed(2)],
-          ['Total Consultation Sales Amount', totalConsultation.toFixed(2)],
-          ['Grand Total', grandTotal.toFixed(2)]
-        ];
-        break;
-
-      case 'insurance_claims':
-        tableRows = isEmployee ? data.map((record) => [
-          record.mr_number || 'N/A',
-          record.insurance_name || 'N/A',
-          record.total_amount ? Number(record.total_amount).toFixed(2) : '0.00',
-          record.approved_amount ? Number(record.approved_amount).toFixed(2) : '0.00',
-          capitalizeFirstLetter(record.status) || 'N/A',
-          record.branch || 'N/A',
-          record.created_at ? formatDateDDMMYYYY(record.created_at, true) : 'N/A',
-        ]) : data.map((record) => [
-          record.mr_number || 'N/A',
-          record.insurance_name || 'N/A',
-          record.total_amount ? Number(record.total_amount).toFixed(2) : '0.00',
-          record.approved_amount ? Number(record.approved_amount).toFixed(2) : '0.00',
-          record.employees?.name || record.employee_id || 'N/A',
-          capitalizeFirstLetter(record.status) || 'N/A',
-          record.branch || 'N/A',
-          record.created_at ? formatDateDDMMYYYY(record.created_at, true) : 'N/A',
-          record.updated_at ? formatDateDDMMYYYY(record.updated_at, true) : 'N/A',
-        ]);
-        break;
-
-      case 'work_orders':
-        tableRows = isEmployee ? data.map((record) => [
-          record.work_order_id || 'N/A',
-          record.advance_details
-            ? Number(record.advance_details).toFixed(2)
-            : '0.00',
-          record.due_date ? formatDateDDMMYYYY(new Date(record.due_date).toISOString(), false) : 'N/A',
-
-          record.mr_number || 'N/A',
-          record.employee || 'N/A',
-          record.payment_method || 'N/A',
-          record.total_amount
-            ? Number(record.total_amount).toFixed(2)
-            : '0.00',
-          record.cgst ? Number(record.cgst).toFixed(2) : '0.00',
-          record.sgst ? Number(record.sgst).toFixed(2) : '0.00',
-          record.is_b2b ? 'Yes' : 'No',
-        ]) : data.map((record) => [
-          record.work_order_id || 'N/A',
-          record.advance_details
-            ? Number(record.advance_details).toFixed(2)
-            : '0.00',
-          record.due_date ? formatDateDDMMYYYY(new Date(record.due_date).toISOString(), false) : 'N/A',
-
-          record.mr_number || 'N/A',
-          record.employee || 'N/A',
-          record.payment_method || 'N/A',
-          record.total_amount
-            ? Number(record.total_amount).toFixed(2)
-            : '0.00',
-          record.cgst ? Number(record.cgst).toFixed(2) : '0.00',
-          record.sgst ? Number(record.sgst).toFixed(2) : '0.00',
-          record.is_b2b ? 'Yes' : 'No',
-          record.created_at
-            ? formatDateDDMMYYYY(record.created_at, true)
-            : 'N/A',
-          record.updated_at
-            ? formatDateDDMMYYYY(record.updated_at, true)
-            : 'N/A',
-          record.branch || 'N/A', // Branch
-        ]);
-        break;
-      case 'privilegecards':
-        tableRows = isEmployee ? data.map((record) => [
-          record.pc_number || 'N/A',
-          record.customer_name || 'N/A',
-          record.phone_number || 'N/A',
-          record.top_up_amount
-            ? Number(record.top_up_amount).toFixed(2)
-            : '0.00',
-          record.loyalty_points !== undefined
-            ? record.loyalty_points
-            : 'N/A',
-          record.card_tier || 'N/A',
-          record.branch || 'N/A', // Branch
-          record.employee_name || 'N/A', // Employee
-        ]) : data.map((record) => [
-          record.pc_number || 'N/A',
-          record.customer_name || 'N/A',
-          record.phone_number || 'N/A',
-          record.top_up_amount
-            ? Number(record.top_up_amount).toFixed(2)
-            : '0.00',
-          record.loyalty_points !== undefined
-            ? record.loyalty_points
-            : 'N/A',
-          record.card_tier || 'N/A',
-          record.created_at
-            ? formatDateDDMMYYYY(record.created_at, true)
-            : 'N/A',
-          record.branch || 'N/A', // Branch
-          record.employee_name || 'N/A', // Employee
-        ]);
-        break;
-      case 'modification_reports':
-        tableRows = isEmployee ? data.map((record) => [
-          record.request_id || 'N/A',
-          record.order_id || 'N/A',
-          record.order_type || 'N/A',
-          record.employee_name || 'N/A',
-          record.modification_type || 'N/A',
-          record.modification_reason || 'N/A',
-          capitalizeFirstLetter(record.status) || 'N/A',
-          record.rejection_reason || 'N/A', // Rejection Reason
-        ]) : data.map((record) => [
-          record.request_id || 'N/A',
-          record.order_id || 'N/A',
-          record.order_type || 'N/A',
-          record.employee_name || 'N/A',
-          record.modification_type || 'N/A',
-          record.modification_reason || 'N/A',
-          capitalizeFirstLetter(record.status) || 'N/A',
-          record.rejection_reason || 'N/A', // Rejection Reason
-          record.created_at
-            ? formatDateDDMMYYYY(record.created_at, true)
-            : 'N/A',
-          record.updated_at
-            ? formatDateDDMMYYYY(record.updated_at, true)
-            : 'N/A',
-        ]);
-        break;
-      case 'product_sales':
-        tableRows = data.map(item => [
-          item.product_name,
-          item.mrp,
-          item.rate,
-          item.quantity_sold,
-          item.total_sales,
-        ]);
-        break;
-      case 'consolidated':
-        tableRows = isEmployee ? data.map((record) => [
-          record.sales_order_id || 'N/A',
-          record.work_order_id || 'N/A',
-          record.mr_number || 'N/A',
-          record.total_amount ? Number(record.total_amount).toFixed(2) : '0.00',
-          record.total_gst ? Number(record.total_gst).toFixed(2) : '0.00',
-          record.discount ? Number(record.discount).toFixed(2) : '0.00',
-          record.advance_collected ? Number(record.advance_collected).toFixed(2) : '0.00',
-          record.balance_collected ? Number(record.balance_collected).toFixed(2) : '0.00',
-          record.total_collected ? Number(record.total_collected).toFixed(2) : '0.00', // Total Collected
-          record.patient_customer_name || 'N/A', // Updated Column
-          record.branch || 'N/A',
-        ]) : data.map((record) => [
-          record.sales_order_id || 'N/A',
-          record.work_order_id || 'N/A',
-          record.mr_number || 'N/A',
-          record.total_amount ? Number(record.total_amount).toFixed(2) : '0.00',
-          record.total_gst ? Number(record.total_gst).toFixed(2) : '0.00',
-          record.discount ? Number(record.discount).toFixed(2) : '0.00',
-          record.advance_collected ? Number(record.advance_collected).toFixed(2) : '0.00',
-          record.balance_collected ? Number(record.balance_collected).toFixed(2) : '0.00',
-          record.total_collected ? Number(record.total_collected).toFixed(2) : '0.00', // Total Collected
-          record.patient_customer_name || 'N/A', // Updated Column
-          record.branch || 'N/A',
-          record.created_at || 'N/A',
-          record.updated_at || 'N/A',
-        ]);
-        break;
-      case 'stock_report':
-        // No "Created At" or "Updated At" columns for stock_report, so no condition needed
-        tableRows = data.map((item) => [
-          item.product_id || 'N/A',
-          item.product_name || 'N/A',
-          item.mrp ? Number(item.mrp).toFixed(2) : '0.00',
-          item.rate ? Number(item.rate).toFixed(2) : '0.00',
-          item.hsn_code || 'N/A',
-          item.total_sold || 0,
-          item.current_stock || 0,
-        ]);
-        break;
-      case 'purchase_report':
-        tableRows = isEmployee ? data.map((record) => [
-          record.id || 'N/A', // Purchase ID
-          record.product_id || 'N/A',
-          record.branch_code || 'N/A',
-          record.quantity || 0,
-          // Rate column omitted for employees
-          record.mrp ? Number(record.mrp).toFixed(2) : '0.00',
-          record.purchase_from || 'N/A',
-          record.bill_number || 'N/A',
-          record.bill_date ? formatDateDDMMYYYY(new Date(record.bill_date).toISOString(), false) : 'N/A',
-          record.created_at ? formatDateDDMMYYYY(record.created_at, true) : 'N/A',
-          record.updated_at ? formatDateDDMMYYYY(record.updated_at, true) : 'N/A',
-          record.employee_name || 'N/A',
-        ]) : data.map((record) => [
-          record.id || 'N/A', // Purchase ID
-          record.product_id || 'N/A',
-          record.branch_code || 'N/A',
-          record.quantity || 0,
-          record.rate ? Number(record.rate).toFixed(2) : '0.00',
-          record.mrp ? Number(record.mrp).toFixed(2) : '0.00',
-          record.purchase_from || 'N/A',
-          record.bill_number || 'N/A',
-          record.bill_date ? formatDateDDMMYYYY(new Date(record.bill_date).toISOString(), false) : 'N/A',
-          record.created_at ? formatDateDDMMYYYY(record.created_at, true) : 'N/A',
-          record.updated_at ? formatDateDDMMYYYY(record.updated_at, true) : 'N/A',
-          record.employee_name || 'N/A',
-        ]);
-        break;
-      case 'stock_assignments':
-        tableRows = data.map((record) => [
-          record.product_id || 'N/A',
-          record.products && record.products.product_name
-            ? record.products.product_name
-            : 'N/A',
-          // Product Name from joined products
-          record.from_branch_code || 'N/A',
-          record.to_branch_code || 'N/A',
-          record.quantity || 0,
-          record.notes || 'N/A',
-          record.rate ? Number(record.rate).toFixed(2) : '0.00',
-          record.mrp ? Number(record.mrp).toFixed(2) : '0.00',
-          record.assigned_at ? formatDateDDMMYYYY(record.assigned_at, true) : 'N/A',
-        ]);
-        break;
-      case 'credit_debit_notes':
-        tableRows = isEmployee ? data.map((record) => [
-          record.id || 'N/A',
-          capitalizeFirstLetter(record.note_type) || 'N/A',
-          record.product_id || 'N/A',
-          record.products && record.products.product_name
-            ? record.products.product_name
-            : 'N/A',
-          // Assuming product_name is fetched via foreign key
-          record.branch_code || 'N/A',
-          record.quantity || 0,
-          record.client_name || 'N/A',
-          record.client_address || 'N/A',
-          record.date ? formatDateDDMMYYYY(new Date(record.date).toISOString(), false) : 'N/A',
-
-          record.reason || 'N/A',
-          record.order_id || 'N/A',
-        ]) : data.map((record) => [
-          record.id || 'N/A',
-          capitalizeFirstLetter(record.note_type) || 'N/A',
-          record.product_id || 'N/A',
-          record.products && record.products.product_name
-            ? record.products.product_name
-            : 'N/A',
-          // Assuming product_name is fetched via foreign key
-          record.branch_code || 'N/A',
-          record.quantity || 0,
-          record.client_name || 'N/A',
-          record.client_address || 'N/A',
-          record.date ? formatDateDDMMYYYY(new Date(record.date).toISOString(), false) : 'N/A',
-
-          record.reason || 'N/A',
-          record.order_id || 'N/A',
-          record.created_at ? formatDateDDMMYYYY(record.created_at, true) : 'N/A',
-          record.updated_at ? formatDateDDMMYYYY(record.updated_at, true) : 'N/A',
-        ]);
-        break;
-      default:
-        tableRows = [];
-    }
-
-    setReportData([tableColumn, ...tableRows]);
-
-    // Generate the main table
-    // doc.autoTable({
-    //   head: [tableColumn],
-    //   body: tableRows,
-    //   startY: 65, // Adjusted to utilize more vertical space
-    //   styles: {
-    //     fontSize: 7,
-    //     cellPadding: 2,
-    //     halign: 'center',
-    //     valign: 'middle',
-    //     overflow: 'linebreak',
-    //     cellWidth: 'wrap',
-    //   }, // Smaller font, linebreak for overflow
-    //   headStyles: {
-    //     fillColor: [0, 160, 0], // Green header
-    //     halign: 'center',
-    //     textColor: 255,
-    //     fontSize: 9,
-    //     overflow: 'linebreak',
-    //     cellWidth: 'wrap',
-    //   },
-    //   alternateRowStyles: { fillColor: [245, 245, 245] },
-    //   margin: { left: 10, right: 10 },
-    //   theme: 'striped',
-    //   showHead: 'everyPage',
-    //   pageBreak: 'auto',
-    //   columnStyles: getColumnStyles(reportType, isEmployee),
-    // });
-
-    doc.autoTable({
-      head: [tableColumn],
-      body: tableRows,
-      startY: 30, // Adjusted to utilize more vertical space
-      styles: {
-        fontSize: 7,
-        cellPadding: 2,
-        halign: 'center',
-        valign: 'middle',
-        overflow: 'linebreak',
-        cellWidth: 'wrap',
-      },
-      headStyles: {
-        fillColor: [0, 0, 0], // Changed to black
-        halign: 'center',
-        textColor: 255,
-        fontSize: 9,
-        overflow: 'linebreak',
-        cellWidth: 'wrap',
-      },
-      alternateRowStyles: { fillColor: [240, 240, 240] }, // Light gray alternating rows
-      margin: { left: 0, right: 0 },
-      theme: 'grid', // Changed to 'grid' for better B&W printing
-      showHead: 'everyPage',
-      pageBreak: 'auto',
-      columnStyles: getColumnStyles(reportType, isEmployee),
-
-      // Adding custom cell rendering for number cells
-      didParseCell: function (data) {
-        const cell = data.cell;
-        const value = cell.raw;
-
-        // Check if the cell contains a numeric value and isn't a header
-        if (!data.row.index && data.section === 'head') return;
-
-        cell.styles.fontSize = 12; // Larger font size for numbers
-        cell.styles.textColor = [0, 0, 0];
-        // cell.styles.fontStyle = 'bold'; // Make numbers bold for emphasis
-      }
-    });
-
-
-    // Calculate and Add Summary
-    let summaryStartY = doc.lastAutoTable.finalY + 10;
-    doc.setFontSize(10);
-    doc.text('Summary', 10, summaryStartY);
-    doc.setFontSize(7); // Adjusted font size for summary
-
-    let summaryTable = [];
-
-    // Example summary data based on report type
-    switch (reportType) {
-      case 'sales_orders': {
-        const totalSales = data.reduce((acc, curr) => acc + (parseFloat(curr.total_amount) || 0), 0);
-        const totalBalanceDue = data.reduce((acc, curr) => acc + (parseFloat(curr.final_amount) || 0), 0);
-        const totalCGST = data.reduce((acc, curr) => acc + (parseFloat(curr.cgst) || 0), 0);
-        const totalSGST = data.reduce((acc, curr) => acc + (parseFloat(curr.sgst) || 0), 0);
-        summaryTable = [
-          ['Total Amount Overall (without Advances)', totalSales.toFixed(2)],
-          ['Total Sales Amount (Balance Collected)', totalBalanceDue.toFixed(2)],
-          ['Total CGST', totalCGST.toFixed(2)],
-          ['Total SGST', totalSGST.toFixed(2)],
-        ];
-        break;
-      }
-      case 'insurance_claims': {
-        const totalClaims = data.length;
-        const totalClaimedAmount = data.reduce((acc, curr) => acc + (parseFloat(curr.total_amount) || 0), 0);
-        const totalApprovedAmount = data.reduce((acc, curr) => acc + (parseFloat(curr.approved_amount) || 0), 0);
-        const pendingClaims = data.filter(record => record.status.toLowerCase() === 'pending').length;
-        const approvedClaims = data.filter(record => record.status.toLowerCase() === 'approved').length;
-        const rejectedClaims = data.filter(record => record.status.toLowerCase() === 'rejected').length;
-
-        // Calculate potential loss (difference between claimed and approved)
-        const potentialLoss = totalClaimedAmount - totalApprovedAmount;
-
-        summaryTable = [
-          ['Total Claims', totalClaims],
-          ['Total Claimed Amount', totalClaimedAmount.toFixed(2)],
-          ['Total Approved Amount', totalApprovedAmount.toFixed(2)],
-          ['Potential Loss', potentialLoss.toFixed(2)],
-          ['Pending Claims', pendingClaims],
-          ['Approved Claims', approvedClaims],
-          ['Rejected Claims', rejectedClaims],
-        ];
-        break;
-      }
-      case 'work_orders': {
-        const totalWorkAmount = data.reduce((acc, curr) => acc + (parseFloat(curr.total_amount) || 0), 0);
-        const totalAdvance = data.reduce((acc, curr) => acc + (parseFloat(curr.advance_details) || 0), 0);
-        summaryTable = [
-          ['Total Work Orders', data.length],
-          ['Total Advances from Work Orders', totalAdvance.toFixed(2)],
-          ['Total Work Amount', totalWorkAmount.toFixed(2)],
-        ];
-        break;
-      }
-      case 'privilegecards': {
-        const totalCards = data.length;
-        const totalLoyaltyPoints = data.reduce((acc, curr) => acc + (curr.loyalty_points || 0), 0);
-        summaryTable = [
-          ['Total Privilege Cards', totalCards],
-          ['Total Loyalty Points', totalLoyaltyPoints],
-        ];
-        break;
-      }
-
-      case 'modification_reports': {
-        const totalModifications = data.length;
-        const approvedModifications = data.filter(record => record.status.toLowerCase() === 'approved').length;
-        const pendingModifications = data.filter(record => record.status.toLowerCase() === 'pending').length;
-        const rejectedModifications = data.filter(record => record.status.toLowerCase() === 'rejected').length;
-        summaryTable = [
-          ['Total Modification Requests', totalModifications],
-          ['Approved', approvedModifications],
-          ['Pending', pendingModifications],
-          ['Rejected', rejectedModifications],
-        ];
-        break;
-      }
-      case 'product_sales': {
-        const totalProducts = data.length;
-        const totalQuantity = data.reduce((acc, curr) => acc + (curr.quantity_sold || 0), 0);
-        const totalSales = data.reduce((acc, curr) => acc + parseFloat(curr.total_sales || 0), 0);
-        summaryTable = [
-          ['Total Products Sold', totalProducts],
-          ['Total Quantity Sold', totalQuantity],
-          ['Total Sales Amount', totalSales.toFixed(2)],
-        ];
-        break;
-      }
-      case 'consolidated': {
-        const totalAmountSales = data
-          .filter(record => record.sales_order_id !== 'N/A')
-          .reduce((acc, curr) => acc + parseFloat(curr.total_amount || 0), 0)
-        const totalGST = data
-          .filter(record => record.total_gst)
-          .reduce((acc, curr) => acc + parseFloat(curr.total_gst), 0);
-        const totalDiscount = data
-          .filter(record => record.discount)
-          .reduce((acc, curr) => acc + parseFloat(curr.discount), 0);
-        const totalAdvanceCollected = data
-          .filter(record => record.advance_collected)
-          .reduce((acc, curr) => acc + parseFloat(curr.advance_collected), 0);
-        const totalBalanceCollected = data
-          .filter(record => record.balance_collected)
-          .reduce((acc, curr) => acc + parseFloat(curr.balance_collected), 0);
-        const totalCollected = data
-          .filter(record => record.total_collected)
-          .reduce((acc, curr) => acc + parseFloat(curr.total_collected), 0);
-
-        summaryTable = [
-          ['Total Sales Amount', totalAmountSales.toFixed(2)],
-          ['Total GST Collected', totalGST.toFixed(2)],
-          ['Total Discount', totalDiscount.toFixed(2)],
-          ['Total Advance Collected', totalAdvanceCollected.toFixed(2)],
-          ['Total Balance Collected', totalBalanceCollected.toFixed(2)],
-          ['Total Collected', totalCollected.toFixed(2)], // Updated summary
-          ['Total OPD Sales', reportDetails.totalOPD.toFixed(2)], // Add OPD total
-        ];
-        break;
-      }
-      case 'stock_report': {
-        const totalProducts = data.length;
-        const totalQuantitySold = data.reduce((acc, curr) => acc + (curr.total_sold || 0), 0);
-        const totalCurrentStock = data.reduce((acc, curr) => acc + (curr.current_stock || 0), 0);
-        summaryTable = [
-          ['Total Products', totalProducts],
-          ['Total Quantity Sold', totalQuantitySold],
-          ['Total Current Stock', totalCurrentStock],
-        ];
-        break;
-      }
-      case 'purchase_report': {
-        const totalPurchases = data.length;
-        const totalQuantity = data.reduce((acc, curr) => acc + (curr.quantity || 0), 0);
-        const totalMRP = data.reduce((acc, curr) => acc + (parseFloat(curr.mrp) || 0), 0);
-        const totalAmount = isEmployee
-          ? data.reduce((acc, curr) => acc + (parseFloat(curr.mrp) * (curr.quantity || 0)), 0)
-          : data.reduce((acc, curr) => acc + ((parseFloat(curr.rate) || 0) * (curr.quantity || 0)), 0);
-        summaryTable = [
-          ['Total Purchases', totalPurchases],
-          ['Total Quantity', totalQuantity],
-          ['Total MRP', totalMRP.toFixed(2)],
-          ['Total Amount', totalAmount.toFixed(2)],
-        ];
-        break;
-      }
-      case 'stock_assignments': { // Added stock_assignments
-        const totalAssignments = data.length;
-        const totalQuantityAssigned = data.reduce((acc, curr) => acc + (curr.quantity || 0), 0);
-        summaryTable = [
-          ['Total Stock Assignments', totalAssignments],
-          ['Total Quantity Assigned', totalQuantityAssigned],
-        ];
-        break;
-      }
-      case 'credit_debit_notes': {
-        const totalNotes = data.length;
-        const totalCredit = data
-          .filter(note => note.note_type.toLowerCase() === 'credit')
-          .reduce((acc, curr) => acc + (curr.quantity || 0), 0);
-        const totalDebit = data
-          .filter(note => note.note_type.toLowerCase() === 'debit')
-          .reduce((acc, curr) => acc + (curr.quantity || 0), 0);
-        summaryTable = [
-          ['Total Notes', totalNotes],
-          ['Total Credit Quantity', totalCredit],
-          ['Total Debit Quantity', totalDebit],
-        ];
-        break;
-      }
-    }
-
-    // Generate the summary table
-    doc.autoTable({
-      startY: summaryStartY + 5,
-      head: [['Metric', 'Value']],
-      body: summaryTable,
-      styles: {
-        fontSize: 7,
-        cellPadding: 2,
-        halign: 'center',
-        valign: 'middle',
-        overflow: 'linebreak',
-        cellWidth: 'wrap',
-      },
-      headStyles: { fillColor: [41, 128, 185], halign: 'center', textColor: 255 },
-      margin: { left: 10, right: 10 },
-      theme: 'striped',
-      columnStyles: {
-        0: { halign: 'left', cellWidth: 80 }, // Increased width for metric names
-        1: { halign: 'center', cellWidth: 40 },
-      },
-    });
-
-    // Add Footer with page numbers
-    addFooter(doc);
-
-    // Save the PDF
-    let fileName = `${reportDetails.type}-${reportType}-report-${reportDetails.identifier}.pdf`;
-    doc.save(fileName);
-  };
-
-  const handleKeyDown = (event, nextRef) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      if (nextRef && nextRef.current) {
-        nextRef.current.focus();
+      if (error || !data) {
+        updateSalesOrderForm({
+          privilegeCardDetails: null,
+          validationErrors: {
+            ...validationErrors,
+            privilegeCardNumber: "Privilege Card not found.",
+          },
+        });
       } else {
-        handleGenerateReport();
+        updateSalesOrderForm({
+          privilegeCardDetails: data,
+          isPinVerified: true, // Assuming successful fetch auto-verifies
+          validationErrors: {
+            ...validationErrors,
+            privilegeCardNumber: null,
+            redeemOption: null,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Unexpected error fetching privilege card:", error);
+      updateSalesOrderForm({
+        validationErrors: {
+          ...validationErrors,
+          privilegeCardNumber:
+            "An unexpected error occurred. Please try again.",
+        },
+      });
+    }
+  };
+
+  const prevStep = useCallback(() => {
+    if (!submitted) {
+      updateSalesOrderForm({ step: Math.max(step - 1, 0) });
+      // We don't reset hasProceededWithoutWorkOrder when going back
+    }
+  }, [step, submitted]);
+  // Fetch privilege card details via phone number
+  const handleFetchPrivilegeCard = async () => {
+    try {
+      const card = await fetchPrivilegeCardByPhone(customerPhone);
+      if (card) {
+        updateSalesOrderForm({ privilegeCardDetails: card });
+        updateSalesOrderForm({
+          validationErrors: {
+            ...validationErrors,
+            generalError: "",
+          },
+        });
+      } else {
+        updateSalesOrderForm({
+          validationErrors: {
+            ...validationErrors,
+            generalError: "No privilege card associated with this number",
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching privilege card:", error);
+      updateSalesOrderForm({
+        validationErrors: {
+          ...validationErrors,
+          generalError: "Failed to fetch privilege card details",
+        },
+      });
+    }
+  };
+
+  // Handle fetching work orders
+  const handleFetchWorkOrders = async () => {
+    try {
+      updateSalesOrderForm({ isFetchingWorkOrders: true });
+
+      let query = supabase.from("work_orders").select("*");
+
+      if (fetchMethod === "work_order_id") {
+        query = query.eq("work_order_id", searchQuery);
+      } else if (fetchMethod === "mr_number") {
+        query = query.eq("mr_number", searchQuery);
+      } else if (fetchMethod === "phone_number") {
+        console.log("Search query (phone number):", searchQuery);
+
+        // Fetch customer by phone number
+        const { data: customer, error: customerError } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("phone_number", searchQuery);
+
+        console.log("Customer query result:", customer);
+
+        if (customerError) {
+          console.error("Error fetching customers:", customerError.message);
+          updateSalesOrderForm({
+            validationErrors: {
+              ...validationErrors,
+              generalError: "Failed to fetch customers.",
+            },
+          });
+          updateSalesOrderForm({ isFetchingWorkOrders: false });
+          return;
+        }
+
+        if (!customer || customer.length === 0) {
+          console.error("No customers found for the given phone number.");
+          updateSalesOrderForm({ workOrders: [] });
+          updateSalesOrderForm({
+            validationErrors: {
+              ...validationErrors,
+              generalError: "No customers found with this phone number.",
+            },
+          });
+          updateSalesOrderForm({ isFetchingWorkOrders: false });
+          return;
+        }
+
+        const customerId = customer[0].customer_id; // Extract the ID
+        console.log("Customer ID:", customerId);
+
+        query = query.eq("customer_id", customerId);
+      }
+
+      // Exclude work orders that are already used and belong to the current branch
+      query = query.eq("is_used", false).eq("branch", branch);
+
+      const { data, error } = await query
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error fetching work orders:", error.message);
+        updateSalesOrderForm({
+          validationErrors: {
+            ...validationErrors,
+            generalError: "Failed to fetch work orders.",
+          },
+        });
+      } else {
+        updateSalesOrderForm({ workOrders: data });
+        updateSalesOrderForm({
+          validationErrors: {
+            ...validationErrors,
+            generalError: "",
+          },
+        });
+
+        setTimeout(() => {
+          if (data.length > 0) {
+            firstWorkOrderButtonRef.current?.focus();
+          } else {
+            proceedButtonRef.current?.focus();
+          }
+        }, 0);
+      }
+
+      updateSalesOrderForm({ isFetchingWorkOrders: false });
+    } catch (error) {
+      console.error("Error fetching work orders:", error);
+      updateSalesOrderForm({
+        validationErrors: {
+          ...validationErrors,
+          generalError: "Failed to fetch work orders.",
+        },
+      });
+      updateSalesOrderForm({ isFetchingWorkOrders: false });
+    }
+  };
+
+  const handleSelectWorkOrder = async (workOrder) => {
+    if (!branch) {
+      console.error("Branch is undefined. Cannot normalize products.");
+      return;
+    }
+
+    console.log("Selected Work Order:", workOrder);
+    console.log("Product Entries:", workOrder.product_entries);
+
+    if (!Array.isArray(workOrder.product_entries)) {
+      console.error(
+        "product_entries is not an array:",
+        workOrder.product_entries
+      );
+      updateSalesOrderForm({
+        validationErrors: {
+          ...validationErrors,
+          generalError: "Invalid product entries in the selected work order.",
+        },
+      });
+      return;
+    }
+
+    const normalizedProducts = await normalizeWorkOrderProducts(
+      workOrder.product_entries,
+      branch
+    );
+
+    if (!Array.isArray(normalizedProducts)) {
+      console.error(
+        "Normalized products are not an array:",
+        normalizedProducts
+      );
+      return;
+    }
+
+    setSelectedWorkOrder({
+      ...workOrder,
+      product_entries: normalizedProducts,
+      discount_amount: workOrder.discount_amount || 0,
+    });
+    setShowWorkOrderModal(true);
+  };
+
+  async function confirmWorkOrderSelection() {
+    if (!selectedWorkOrder) {
+      console.error("No work order selected.");
+      return;
+    }
+
+    // Ensure branch is available
+    if (!branch) {
+      console.error("Branch is undefined. Cannot normalize products.");
+      return;
+    }
+
+    // IMPORTANT FIX: Generate sales order ID based on selected work order FIRST
+    console.log("Work Order ID:", selectedWorkOrder.work_order_id);
+    const newSalesOrderId = await generateSalesOrderId(branch);
+
+    if (!newSalesOrderId) {
+      updateSalesOrderForm({
+        validationErrors: {
+          ...validationErrors,
+          generalError: "Failed to generate sales order ID"
+        }
+      });
+      return;
+    }
+
+    console.log("Generated Sales Order ID:", newSalesOrderId);
+
+
+
+    // Normalize products with branch
+    const normalizedProducts = await normalizeWorkOrderProducts(
+      selectedWorkOrder.product_entries,
+      branch
+    );
+
+    if (!Array.isArray(normalizedProducts)) {
+      console.error(
+        "Normalized products are not an array:",
+        normalizedProducts
+      );
+      return;
+    }
+
+    let insuranceInfo = null;
+    if (selectedWorkOrder.is_insurance) {
+      try {
+        // Fetch insurance claim based on MR number
+        const { data: claimData, error: claimError } = await supabase
+          .from("insurance_claims")
+          .select("*")
+          .eq("mr_number", selectedWorkOrder.mr_number)
+          .eq("status", "pending") // Only get approved claims
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (claimError) {
+          console.error("Error fetching insurance claim:", claimError);
+        } else if (claimData && claimData.length > 0) {
+          insuranceInfo = claimData[0];
+          console.log("Insurance claim found:", insuranceInfo);
+        }
+      } catch (err) {
+        console.error("Error processing insurance claim:", err);
       }
     }
+
+    // Update global state
+    updateSalesOrderForm({
+      mrNumber: selectedWorkOrder.mr_number,
+      advanceDetails: selectedWorkOrder.advance_details || "",
+      hasMrNumber: selectedWorkOrder.mr_number ? "yes" : "no",
+      productEntries: normalizedProducts,
+      workOrderDiscount: selectedWorkOrder.discount_amount || 0,
+      insuranceInfo: insuranceInfo, // Add insurance info to state
+    });
+
+    setOriginalProductEntries(normalizedProducts);
+    setShowWorkOrderModal(false);
+
+    // Automatically fetch patient or customer details
+    const consultantFromWorkOrder = selectedWorkOrder.consultant_name || '';
+
+
+
+    if (selectedWorkOrder.mr_number) {
+      const patient = await fetchPatientByMRNumber(
+        selectedWorkOrder.mr_number.trim()
+      );
+
+      if (patient) {
+        updateSalesOrderForm({
+          patientDetails: {
+            name: patient.name,
+            age: patient.age,
+            condition: patient.condition || "N/A",
+            phone_number: patient.phone_number || "N/A",
+            gender: patient.gender || "N/A",
+            address: patient.address || "N/A",
+          },
+          validationErrors: {
+            ...validationErrors,
+            generalError: "",
+          },
+        });
+      } else {
+        updateSalesOrderForm({
+          patientDetails: null,
+          validationErrors: {
+            ...validationErrors,
+            generalError: "No patient found with the provided MR Number.",
+          },
+        });
+      }
+    } else if (selectedWorkOrder.patient_details) {
+      // Use patient_details from the work order
+      const patientDetails = selectedWorkOrder.patient_details;
+
+      updateSalesOrderForm({
+        patientDetails: {
+          name: patientDetails.name || "",
+          age: patientDetails.age || "",
+          condition: patientDetails.condition || "N/A",
+          phone_number: patientDetails.phone_number || "N/A",
+          gender: patientDetails.gender || "N/A",
+          address: patientDetails.address || "N/A",
+        },
+        customerName: patientDetails.name || "",
+        customerPhone: patientDetails.phone_number || "",
+        address: patientDetails.address || "",
+        age: patientDetails.age || "",
+        gender: patientDetails.gender || "",
+        validationErrors: {
+          ...validationErrors,
+          generalError: "",
+        },
+      });
+    } else {
+      // If patient_details is not present, try fetching customer details using phone number
+      const customerPhone =
+        selectedWorkOrder.patient_details?.phone_number ||
+        selectedWorkOrder.customer_phone;
+
+      if (customerPhone) {
+        // console.log("Fetching customer details using phone number:", customerPhone.trim());
+
+        const customer = await fetchCustomerByPhone(customerPhone);
+        if (customer) {
+          updateSalesOrderForm({
+            patientDetails: {
+              name: customer.name,
+              age: customer.age,
+              condition: customer.condition || "N/A",
+              phone_number: customer.phone_number || "N/A",
+              gender: customer.gender || "N/A",
+              address: customer.address || "N/A",
+            },
+            customerName: customer.name || "",
+            customerPhone: customer.phone_number || "",
+            address: customer.address || "",
+            age: customer.age || "",
+            gender: customer.gender || "",
+            validationErrors: {
+              ...validationErrors,
+              generalError: "",
+            },
+          });
+        } else {
+          updateSalesOrderForm({
+            patientDetails: null,
+            validationErrors: {
+              ...validationErrors,
+              generalError: "No customer found with the provided phone number.",
+            },
+          });
+        }
+      } else {
+        // No MR number, no patient_details, and no customer_phone
+        updateSalesOrderForm({
+          patientDetails: null,
+          validationErrors: {
+            ...validationErrors,
+            generalError:
+              "Selected work order doesn't contain customer details.",
+          },
+        });
+      }
+    }
+    setConsultantName(consultantFromWorkOrder);
+    console.log("Consultant Name from Work Order:", consultantFromWorkOrder);
+
+
+    // Move to the next step
+    updateSalesOrderForm({ step: 1 });
+  }
+
+  // Function to send OTP
+  const handleSendOtp = () => {
+    console.log("handleSendOtp called");
+
+    const { state, dispatch } = useGlobalState();
+    const { salesOrderForm, validationErrors } = state;
+    const phoneNumber = salesOrderForm.customerPhone?.trim(); // Access from global state
+
+    console.log("Entered Phone Number:", phoneNumber);
+
+    if (
+      !phoneNumber ||
+      phoneNumber.length !== 10 ||
+      !/^\d+$/.test(phoneNumber)
+    ) {
+      // Update validation error in global state
+      dispatch({
+        type: "SET_SALES_ORDER_FORM",
+        payload: {
+          validationErrors: {
+            ...validationErrors,
+            customerPhone: "Please enter a valid 10-digit phone number.",
+          },
+        },
+      });
+
+      privilegePhoneRef.current?.focus();
+      return;
+    }
+
+    // Update isOtpSent and clear validation errors in global state
+    dispatch({
+      type: "SET_SALES_ORDER_FORM",
+      payload: {
+        isOtpSent: true,
+        validationErrors: {
+          ...validationErrors,
+          customerPhone: null, // Clear phone validation error
+        },
+      },
+    });
+
+    // Mock OTP alert for testing
+    alert(`Mock OTP for testing purposes: ${mockOtp}`);
+    setTimeout(() => {
+      otpRef.current?.focus();
+    }, 100);
   };
 
-  const toggleReportScope = (scope) => {
-    if (isEmployee) return;
-    if (scope === 'combined') {
-      setIsCombined(true);
+  const handleVerifyOtp = async () => {
+    // Accessing salesOrderForm and validationErrors from global state
+    const { state, dispatch } = useGlobalState();
+    const { salesOrderForm, validationErrors } = state;
+
+    if (salesOrderForm.otp === mockOtp) {
+      // Update global state for isPinVerified
+      dispatch({
+        type: "SET_SALES_ORDER_FORM",
+        payload: {
+          isPinVerified: true,
+          validationErrors: {
+            ...validationErrors,
+            generalError: "", // Clear general errors
+          },
+        },
+      });
+
+      // Perform fetch privilege card operation
+      await handleFetchPrivilegeCard();
+
+      setTimeout(() => {
+        if (!validationErrors.generalError) {
+          nextButtonRef.current?.focus();
+        }
+      }, 0); // Focus on the next button if no errors
     } else {
-      setIsCombined(false);
+      // Set validation error in global state
+      dispatch({
+        type: "SET_SALES_ORDER_FORM",
+        payload: {
+          validationErrors: {
+            ...validationErrors,
+            generalError: "Incorrect OTP. Please try again.",
+          },
+        },
+      });
     }
   };
 
-  const toggleBranch = (branchCode) => {
-    if (isEmployee) return;
-    if (selectedBranches.includes(branchCode)) {
-      setSelectedBranches(selectedBranches.filter(code => code !== branchCode));
-    } else {
-      setSelectedBranches([...selectedBranches, branchCode]);
-    }
+  const handleNewPrivilegeCard = () => {
+    navigate("/privilege-generation", {
+      state: {
+        from: "sales-order",
+        step,
+        formData: {
+          productEntries,
+          mrNumber,
+          patientDetails,
+          customerName,
+          customerPhone,
+          address,
+          age,
+          gender,
+          employee,
+          paymentMethod,
+          advanceDetails,
+          privilegeCard: salesOrderForm.privilegeCard,
+          redeemPoints: salesOrderForm.redeemPoints,
+          redeemPointsAmount: salesOrderForm.redeemPointsAmount,
+          loyaltyPoints,
+          discount,
+          privilegeCardNumber: salesOrderForm.privilegeCardNumber,
+          // Add any other necessary fields
+        },
+      },
+    });
   };
-
-
-  const reportTypes = isEmployee ? [
-    { value: 'consolidated', label: 'Consolidated' },
-    { value: 'stock_report', label: 'Stock Report' },
-    { value: 'purchase_report', label: 'Purchase Report' },
-    { value: 'stock_assignments', label: 'Stock Assignments' },
-    { value: 'compiled_report', label: 'Compiled Report' },
-    { value: 'insurance_claims', label: 'Insurance Claims' },
-    { value: 'product_sales', label: 'Product Sales' },
-  ] : [
-    { value: 'sales_orders', label: 'Sales Orders' },
-    { value: 'work_orders', label: 'Work Orders' },
-    { value: 'consolidated', label: 'Consolidated' },
-    { value: 'compiled_report', label: 'Compiled Report' },
-    { value: 'insurance_claims', label: 'Insurance Claims' },
-    { value: 'product_sales', label: 'Product Sales' },
-
-
-  ];
 
   useEffect(() => {
-    if (!reportTypes.some(type => type.value === reportType)) {
-      setReportType(reportTypes[0].value);
+    const locationState = location.state;
+    if (locationState?.from === "privilege-generation") {
+      updateSalesOrderForm({ isEditing: true });
+
+      const data = locationState.formData;
+      if (data) {
+        updateSalesOrderForm({
+          productEntries: data.productEntries,
+          mrNumber: data.mrNumber,
+          patientDetails: data.patientDetails,
+          customerName: data.customerName,
+          customerPhone: data.customerPhone,
+          address: data.address,
+          age: data.age,
+          gender: data.gender,
+          employee: data.employee,
+          paymentMethod: data.paymentMethod,
+          advanceDetails: data.advanceDetails,
+          privilegeCard: data.privilegeCard,
+          redeemPoints: data.redeemPoints,
+          redeemPointsAmount: data.redeemPointsAmount,
+          loyaltyPoints: data.loyaltyPoints,
+          privilegeCardNumber: data.privilegeCardNumber || "",
+          discount: data.discount || "",
+          // Add any other necessary fields
+        });
+
+        // If privilegeCardDetails are available, set them
+        if (data.privilegeCardDetails) {
+          updateSalesOrderForm({
+            privilegeCardDetails: data.privilegeCardDetails,
+          });
+        }
+      }
     }
-  }, [role, reportTypes, reportType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
+
+  useEffect(() => {
+    const focusTimeout = setTimeout(() => {
+      focusFirstFieldOfStep();
+    }, 100); // Add a slight delay to ensure the element is mounted
+
+    return () => clearTimeout(focusTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, salesOrderForm.privilegeCard, salesOrderForm.redeemOption]);
+
+  const handleEnterKey = (e, nextFieldRef, prevFieldRef) => {
+    if (e.key === "Enter") {
+      if (e.shiftKey) {
+        // Handle Shift+Enter if needed
+        if (prevFieldRef?.current) {
+          e.preventDefault();
+          prevFieldRef.current.focus();
+        }
+      } else {
+        e.preventDefault();
+        if (nextFieldRef?.current) {
+          nextFieldRef.current.focus();
+        } else {
+          e.target.click();
+        }
+      }
+    }
+    // Handle Arrow Keys for navigation
+    else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      if (nextFieldRef?.current) {
+        nextFieldRef.current.focus();
+      }
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      if (prevFieldRef?.current) {
+        prevFieldRef.current.focus();
+      }
+    }
+  };
+
+  // Function to validate individual fields
+  const validateField = (index, field) => {
+    const errors = { ...validationErrors };
+
+    if (field === "id" && !productEntries[index].id) {
+      errors[`productId-${index}`] = "Product ID is required";
+    }
+    if (field === "price") {
+      const price = parseFloat(productEntries[index].price);
+      if (isNaN(price) || price < 0) {
+        errors[`productPrice-${index}`] = "Enter a valid non-negative number";
+      } else {
+        delete errors[`productPrice-${index}`];
+      }
+    } else if (field === "quantity") {
+      const quantity = parseInt(productEntries[index].quantity, 10);
+      if (!quantity) {
+        errors[`productQuantity-${index}`] = "Quantity is required";
+      } else if (quantity <= 0) {
+        errors[`productQuantity-${index}`] = "Quantity must be greater than zero";
+      } else {
+        delete errors[`productQuantity-${index}`];
+      }
+    } else {
+      delete errors[`product${field.charAt(0).toUpperCase() + field.slice(1)}-${index}`];
+    }
+
+    updateSalesOrderForm({
+      validationErrors: {
+        ...errors,
+      },
+    });
+  };
+
+  const nextStep = async () => {
+    const errors = {};
+
+    // Validate each step before proceeding
+    if (step === 0) {
+      if (!searchQuery.trim())
+        errors.searchQuery =
+          "Work Order ID, MR Number, or Phone Number is required";
+      // No need to validate branchCode as branch is fetched from context
+    } else if (step === 1) {
+      productEntries.forEach((product, index) => {
+        if (!product.id) errors[`productId-${index}`] = "Product ID is required";
+        if (!product.price) errors[`productPrice-${index}`] = "Price is required";
+        if (!product.quantity) errors[`productQuantity-${index}`] = "Quantity is required";
+        else {
+          const quantity = parseInt(product.quantity, 10);
+          if (isNaN(quantity) || quantity <= 0) {
+            errors[`productQuantity-${index}`] = "Enter a valid quantity";
+          }
+        }
+      });
+    } else if (step === 2) {
+      if (hasMrNumber === "yes") {
+        if (!mrNumber) {
+          errors.mrNumber = "MR number is required";
+        }
+      } else if (hasMrNumber === "no") {
+        if (!customerName.trim()) {
+          errors.customerName = "Name is required";
+        }
+        if (!customerPhone.trim()) {
+          errors.customerPhone = "Phone number is required";
+        } else if (!/^\d{10}$/.test(customerPhone)) {
+          errors.customerPhone = "Please enter a valid 10-digit phone number";
+        }
+        if (!address.trim()) errors.address = "Address is required.";
+        if (!age) errors.customerAge = "Age is required.";
+        if (age && parseInt(age) < 0)
+          errors.customerAge = "Age cannot be negative.";
+        if (!gender) errors.customerGender = "Gender is required.";
+      }
+    } else if (step === 3 && privilegeCard) {
+      if (redeemOption === "phone") {
+        if (!customerPhone.trim())
+          errors.customerPhone = "Phone number is required";
+        if (!salesOrderForm.otp.trim()) errors.otp = "OTP is required";
+        if (!isPinVerified) errors.otp = "Please verify the OTP";
+      }
+      if (
+        redeemPointsAmount &&
+        (parseFloat(redeemPointsAmount) > loyaltyPoints ||
+          parseFloat(redeemPointsAmount) < 0)
+      ) {
+        errors.redeemPointsAmount = "Invalid redemption amount";
+      }
+      if (
+        discount !== "" &&
+        (parseFloat(discount) < 0 || parseFloat(discount) > 100)
+      ) {
+        errors.discount = "Discount percentage must be between 0 and 100";
+      }
+    } else if (step === 4 && !employee) {
+      errors.employee = "Employee selection is required";
+    } else if (step === 5 && !paymentMethod) {
+      errors.paymentMethod = "Payment method is required";
+    }
+
+    // Dispatch validation errors
+    updateSalesOrderForm({ validationErrors: errors });
+
+    if (Object.keys(errors).length === 0) {
+      if (step < 5) {
+        updateSalesOrderForm({ step: step + 1 });
+      }
+    }
+  };
+
+  const handleMRNumberSearch = async () => {
+    if (!mrNumber.trim()) {
+      updateSalesOrderForm({
+        validationErrors: {
+          ...validationErrors,
+          mrNumber: "MR number is required",
+        },
+      });
+      mrNumberRef.current?.focus();
+      return;
+    }
+
+    const patient = await fetchPatientByMRNumber(mrNumber.trim());
+
+    if (patient) {
+      updateSalesOrderForm({
+        patientDetails: {
+          name: patient.name,
+          age: patient.age,
+          condition: patient.condition || "N/A",
+          phone_number: patient.phone_number || "N/A",
+          gender: patient.gender || "N/A",
+          address: patient.address || "N/A",
+        },
+        validationErrors: { ...validationErrors, mrNumber: null },
+      });
+      updateSalesOrderForm({
+        validationErrors: {
+          ...validationErrors,
+          generalError: "",
+        },
+      });
+      nextButtonRef.current?.focus();
+    } else {
+      updateSalesOrderForm({ patientDetails: null });
+      updateSalesOrderForm({
+        validationErrors: {
+          ...validationErrors,
+          generalError: "No patient found with the provided work order",
+        },
+      });
+    }
+  };
+
+  const focusFirstFieldOfStep = () => {
+    if (step === 0) {
+      workOrderInputRef.current?.focus();
+    }
+
+
+    if (step === 1) document.getElementById(`productId-0`)?.focus();
+    if (step === 2) {
+      if (hasMrNumber === "yes") {
+        mrNumberRef.current?.focus();
+      } else if (hasMrNumber === "no") {
+        customerNameRef.current?.focus();
+      }
+    }
+    if (step === 3 && salesOrderForm.privilegeCard) {
+      if (salesOrderForm.redeemOption === "barcode") {
+        privilegeCardRef.current?.focus();
+      } else if (salesOrderForm.redeemOption === "phone") {
+        privilegePhoneRef.current?.focus();
+      }
+    }
+    if (step === 4) employeeRef.current?.focus();
+    if (step === 5) {
+      discountInputRef.current?.focus();
+    }
+
+  };
+
+  const setSearchQuery = (query) => {
+    dispatch({
+      type: "SET_SALES_ORDER_FORM",
+      payload: { searchQuery: query },
+    });
+  };
+
+  const handleSearchQueryChange = (e) => {
+    setSearchQuery(e.target.value);
+  };
+
+
+
+  // Function to reset the form
+  const resetForm = () => {
+    // Only reset if user confirms
+    if (window.confirm("Are you sure you want to reset the form? All unsaved changes will be lost.")) {
+      dispatch({ type: "RESET_SALES_ORDER_FORM" });
+      setOriginalProductEntries([
+        { id: "", product_id: "", name: "", price: "", quantity: "" },
+      ]);
+      setProductSuggestions([]);
+      setIsGeneratingId(false);
+      sessionStorage.removeItem('salesOrderFormState');
+    }
+  };
+
+  const handleExit = () => {
+    if (submitted) {
+      // Already submitted, just navigate away without confirmation
+      sessionStorage.removeItem('salesOrderFormState');
+      dispatch({ type: "RESET_SALES_ORDER_FORM" });
+      navigate("/home");
+    } else if (window.confirm("Are you sure you want to exit? Unsaved changes will be lost.")) {
+      sessionStorage.removeItem('salesOrderFormState');
+      dispatch({ type: "RESET_SALES_ORDER_FORM" });
+      navigate("/home");
+    }
+  };
+
+  const handlePrint = () => {
+    // Update print status
+    updateSalesOrderForm({ isPrinted: true });
+
+    // Use the browser's print functionality
+    window.print();
+  };
+
+
+
+  // Function to save the sales order
+  // Function to save the sales order
+  const saveSalesOrder = async () => {
+    if (isSaving) {
+      alert("Please wait while the Sales Order is being saved.");
+      return;
+    }
+
+    if (submitted) {
+      alert("Sales Order submitted already");
+      return; // Prevent duplicate submissions
+    }
+
+    updateSalesOrderForm({ isSaving: true });
+
+    // Validation Checks
+    const validations = [
+      {
+        condition: !employee,
+        field: "employee",
+        message: "Employee selection is required.",
+        ref: employeeRef
+      },
+      {
+        condition: isB2B && !gstNumber,
+        field: "gstNumber",
+        message: "GST Number is required for B2B orders.",
+        ref: gstNumberRef
+      },
+      {
+        condition: !paymentMethod,
+        field: "paymentMethod",
+        message: "Payment method is required.",
+        ref: paymentMethodRef
+      }
+    ];
+
+    const validationsFailed = validations.some(({ condition, field, message, ref }) => {
+      if (condition) {
+        setValidationErrors(prev => ({ ...prev, [field]: message }));
+        ref?.current?.focus();
+        return true;
+      }
+      return false;
+    });
+
+    if (validationsFailed) {
+      updateSalesOrderForm({ isSaving: false });
+      return;
+    }
+
+    // Clear any previous validation errors
+    setValidationErrors({});
+
+    try {
+      // Calculate loyalty points changes
+      const { updatedPoints } = calculateLoyaltyPoints(
+        parseFloat(amountAfterDiscount),
+        parseFloat(subtotalWithGST),
+        parseFloat(redeemPointsAmount || 0),
+        privilegeCard,
+        privilegeCardDetails,
+        loyaltyPoints
+      );
+
+      // Customer handling
+      const customerDetails = {
+        name: hasMrNumber ? patientDetails?.name : customerName,
+        phone_number: hasMrNumber ? patientDetails?.phoneNumber : customerPhone,
+        address: hasMrNumber ? patientDetails?.address : address,
+        age: hasMrNumber ? patientDetails?.age : age,
+        gender: hasMrNumber ? patientDetails?.gender : gender,
+      };
+
+      let customerId;
+
+      if (!hasMrNumber) {
+        // Check if customer already exists
+        let customerResult = await fetchCustomerByPhone(customerPhone);
+
+        if (customerResult && customerResult.length > 0) {
+          customerId = customerResult[0].customer_id;
+        } else {
+          // Create new customer
+          const savedCustomer = await saveCustomerDetails(customerDetails);
+          customerId = savedCustomer.customer_id;
+        }
+      }
+
+      // Prepare the payload for the sales order
+      const payload = {
+        sales_order_id: salesOrderId,
+        branch,
+        sub_role: subRole,
+        work_order_id: selectedWorkOrder?.work_order_id || 'GENERAL',
+        employee,
+        mr_number: mrNumber,
+        patient_phone: customerPhone,
+        payment_method: paymentMethod,
+        discount: parseFloat(discount) || 0,
+        advance_details: parseFloat(advanceDetails) || 0,
+        total_amount: parseFloat(finalAmount),
+        subtotal: parseFloat(subtotalWithoutGST),
+        cgst: parseFloat(cgstAmount),
+        sgst: parseFloat(sgstAmount),
+        product_entries: productEntries.map((entry) => ({
+          product_id: entry.id,
+          quantity: parseInt(entry.quantity, 10),
+          price: parseFloat(entry.price),
+          hsn_code: entry.hsn_code,
+        })),
+        created_at: getCurrentUTCDateTime(),
+        consultant_name: consultantName,
+        updated_at: getCurrentUTCDateTime(),
+      };
+
+
+      // If editing, update the existing order
+      if (isEditing && orderId) {
+        const { error } = await supabase
+          .from('sales_orders')
+          .update(payload)
+          .eq('sales_order_id', orderId);
+
+        if (error) {
+          console.error("Error updating sales order:", error);
+          alert("Failed to update sales order. Please try again.");
+          updateSalesOrderForm({ isSaving: false });
+          return;
+        }
+
+        // Update stock adjustments for product differences
+        const productDifferences = calculateProductDifferences(originalProductEntries, productEntries);
+
+
+        alert("Sales order updated successfully!");
+      } else {
+        // Create a new sales order
+        const response = await supabase
+          .from('sales_orders')
+          .insert(payload)
+          .select();
+
+        if (response.error) {
+          console.error("Error saving sales order:", response.error);
+          alert("Failed to save sales order. Please try again.");
+          updateSalesOrderForm({ isSaving: false });
+          return;
+        }
+
+        // Adjust stock levels
+
+        // If this is from a work order, mark the work order as used
+        if (selectedWorkOrder?.work_order_id) {
+          await supabase
+            .from('work_orders')
+            .update({ is_used: true })
+            .eq('work_order_id', selectedWorkOrder.work_order_id);
+        }
+
+        // Update privilege card points if applicable
+        if (privilegeCard) {
+          await supabase
+            .from('privilegecards')
+            .update({ loyalty_points: updatedPoints })
+            .eq('pc_number', privilegeCard);
+        }
+
+        // Success! Set flags to stay on the current step with print options
+        updateSalesOrderForm({
+          allowPrint: true,
+          submitted: true,
+          isSaving: false,
+          step: 5,  // Explicitly maintain step 5
+          showSuccessMessage: true // Add a success flag instead of using alert
+        });
+
+        fetchLastBilledOrder();
+
+
+      }
+    } catch (err) {
+      console.error("Unexpected error:", err);
+      alert("An unexpected error occurred. Please try again.");
+    } finally {
+      updateSalesOrderForm({ isSaving: false });
+    }
+  };
+
+  useEffect(() => {
+    if (submitted && step !== 5) {
+      // Force step back to 5 if it somehow got changed after submission
+      updateSalesOrderForm({ step: 5 });
+    }
+  }, [submitted, step]);
 
   return (
     <div
-      className={`flex justify-center transition-all duration-300 ${isCollapsed ? 'ml-0' : 'ml-14'} my-20 px-4`}
+      className={`transition-all duration-300 ${isCollapsed ? "mx-20" : "mx-20 px-20"
+        } justify-center mt-16 p-4 mx-auto`}
     >
-      <div className="w-full max-w-4xl">
-        <h1 className="text-3xl font-bold mb-6 text-center text-gray-800">Generate {capitalizeFirstLetter(reportType)} Report</h1>
-
-        {error && (
-          <div className="flex items-center mb-6 p-4 rounded-lg bg-red-100 text-red-700">
-            <ExclamationCircleIcon className="w-6 h-6 mr-2" />
-            <span>{error}</span>
-          </div>
-        )}
-        {success && (
-          <div className="flex items-center mb-6 p-4 rounded-lg bg-green-100 text-green-700">
-            <CheckCircleIcon className="w-6 h-6 mr-2" />
-            <span>{success}</span>
-          </div>
-        )}
-
-        <div className="bg-white shadow-lg rounded-lg p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="reportType" className="block text-sm font-medium text-gray-700 mb-1">
-                Report Type
-              </label>
-              <select
-                id="reportType"
-                ref={reportTypeRef}
-                value={reportType}
-                onChange={(e) => setReportType(e.target.value)}
-                onKeyDown={(e) => handleKeyDown(e, reportPeriodRef)}
-                className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                aria-label="Select Report Type"
-              >
-                {reportTypes.map((type) => (
-                  <option key={type.value} value={type.value}>{type.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="reportPeriod" className="block text-sm font-medium text-gray-700 mb-1">
-                Report Period
-              </label>
-              <select
-                id="reportPeriod"
-                value={reportPeriod}
-                ref={reportPeriodRef}
-                onChange={(e) => {
-                  setReportPeriod(e.target.value);
-                  setDate('');
-                  setMonthYear('');
-                  setFromDate('');
-                  setToDate('');
-                }}
-                onKeyDown={(e) =>
-                  handleKeyDown(
-                    e,
-                    reportPeriod === 'daily'
-                      ? dateRef
-                      : reportPeriod === 'monthly'
-                        ? monthYearRef
-                        : fromDateRef
-                  )
-                }
-                className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                aria-label="Select Report Period"
-              >
-                <option value="daily">Daily</option>
-                <option value="monthly">Monthly</option>
-                <option value="range">Date Range</option>
-              </select>
-            </div>
-          </div>
-
-          {!isEmployee && (
-            <div className="mt-6">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Report Scope
-              </label>
-              <div className="flex space-x-4">
-                <button
-                  type="button"
-                  onClick={() => toggleReportScope('branch')}
-                  onKeyDown={(e) => handleKeyDown(e, isCombined ? generateButtonRef : branchSelectionRef)}
-                  className={`px-4 py-2 rounded-md border ${!isCombined
-                    ? 'bg-green-500 text-white border-green-500'
-                    : 'bg-white text-gray-700 border-gray-300'
-                    } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
-                  aria-label="Select Branch-wise Report Scope"
-                >
-                  Branch-wise
-                </button>
-                <button
-                  type="button"
-                  onClick={() => toggleReportScope('combined')}
-                  onKeyDown={(e) => handleKeyDown(e, generateButtonRef)}
-                  className={`px-4 py-2 rounded-md border ${isCombined
-                    ? 'bg-green-500 text-white border-green-500'
-                    : 'bg-white text-gray-700 border-gray-300'
-                    } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
-                  aria-label="Select Combined Report Scope"
-                >
-                  Combined (All Branches)
-                </button>
-              </div>
-            </div>
-          )}
-
-          {!isEmployee && !isCombined && (
-            <div className="mt-6">
-              <label htmlFor="branchSelection" className="block text-sm font-medium text-gray-700 mb-2">
-                Select Branches
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {allBranches.map((branch) => (
-                  <button
-                    key={branch.code}
-                    type="button"
-                    onClick={() => toggleBranch(branch.code)}
-                    onKeyDown={(e) => handleKeyDown(e, e.target.nextSibling || generateButtonRef)}
-                    className={`px-4 py-2 rounded-md border ${selectedBranches.includes(branch.code)
-                      ? 'bg-green-500 text-white border-green-500'
-                      : 'bg-white text-gray-700 border-gray-300'
-                      } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
-                    aria-label={`Toggle branch ${branch.name}`}
-                  >
-                    {branch.name}
-                  </button>
-                ))}
-              </div>
-              {!isEmployee && selectedBranches.length === 0 && (
-                <p className="text-sm text-red-500 mt-1">Please select at least one branch.</p>
-              )}
-            </div>
-          )}
-
-          {reportType === 'purchase_report' && (
-            <div className="mt-6">
-              <label htmlFor="purchaseFromFilter" className="block text-sm font-medium text-gray-700 mb-1">
-                Purchase From (Optional)
-              </label>
-              <select
-                id="purchaseFromFilter"
-                value={selectedPurchaseFrom}
-                onChange={(e) => setSelectedPurchaseFrom(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-              >
-                {purchaseFromOptions.map((option, idx) => (
-                  <option key={idx} value={option}>{option}</option>
-                ))}
-              </select>
-              <p className="text-sm text-gray-500 mt-1">
-                Select a specific source or choose "All" to include all purchase sources.
+      {/* Modal for Work Order Details */}
+      {showWorkOrderModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-md shadow-md max-w-md w-full">
+            <h2 className="text-lg font-semibold text-gray-700 mb-4">
+              Work Order Details
+            </h2>
+            <div className="space-y-2">
+              <p>
+                <strong>Work Order ID:</strong>{" "}
+                {selectedWorkOrder.work_order_id}
               </p>
-            </div>
-          )}
+              <p>
+                <strong>Advance Amount Paid:</strong> ₹
+                {parseFloat(selectedWorkOrder.advance_details).toFixed(2)}
+              </p>
+              {/* <p>
+                <strong>CGST:</strong> ₹
+                {parseFloat(selectedWorkOrder.cgst).toFixed(2)}
+              </p>
+              <p>
+                <strong>SGST:</strong> ₹
+                {parseFloat(selectedWorkOrder.sgst).toFixed(2)}
+              </p> */}
+              <p>
+                <strong>Created At:</strong>{" "}
+                {convertUTCToIST(selectedWorkOrder.created_at)}
+              </p>
 
-          {reportPeriod === 'daily' && (
-            <div className="mt-6">
-              <label htmlFor="selectDate" className="block text-sm font-medium text-gray-700 mb-1">Select Date</label>
-              <input
-                type="date"
-                id="selectDate"
-                ref={dateRef}
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                onKeyDown={(e) => handleKeyDown(e, isEmployee ? generateButtonRef : isCombined ? generateButtonRef : branchSelectionRef)}
-                className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                required
-                aria-required="true"
-              />
+              {/* Display Product Entries */}
+              {selectedWorkOrder.product_entries &&
+                selectedWorkOrder.product_entries.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold mt-4">Product Entries:</h3>
+                    <table className="w-full mt-2 border border-gray-300 rounded-md">
+                      <thead>
+                        <tr className="bg-gray-100">
+                          <th className="py-1 px-2">Product ID</th>
+                          <th className="py-1 px-2">Product Name</th>
+                          <th className="py-1 px-2">Price</th>
+                          <th className="py-1 px-2">Quantity</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedWorkOrder.product_entries.map(
+                          (product, index) => (
+                            <tr key={index} className="text-center">
+                              <td className="py-1 px-2">
+                                {product.product_id}
+                              </td>
+                              <td className="py-1 px-2">{product.name}</td>
+                              <td className="py-1 px-2">{product.price}</td>
+                              <td className="py-1 px-2">{product.quantity}</td>
+                            </tr>
+                          )
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
             </div>
-          )}
-
-          {reportPeriod === 'monthly' && (
-            <div className="mt-6">
-              <label htmlFor="selectMonthYear" className="block text-sm font-medium text-gray-700 mb-1">Select Month and Year</label>
-              <input
-                type="month"
-                id="selectMonthYear"
-                ref={monthYearRef}
-                value={monthYear}
-                onChange={(e) => setMonthYear(e.target.value)}
-                onKeyDown={(e) => handleKeyDown(e, isEmployee ? generateButtonRef : isCombined ? generateButtonRef : branchSelectionRef)}
-                className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                required
-                aria-required="true"
-              />
-            </div>
-          )}
-
-          {reportPeriod === 'range' && (
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="fromDate" className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
-                <input
-                  type="date"
-                  id="fromDate"
-                  value={fromDate}
-                  ref={fromDateRef}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(e, toDateRef)}
-                  className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                  required
-                  aria-required="true"
-                />
-              </div>
-              <div>
-                <label htmlFor="toDate" className=" block text-sm font-medium text-gray-700 mb-1">To Date</label>
-                <input
-                  type="date"
-                  id="toDate"
-                  value={toDate}
-                  ref={toDateRef}
-                  onChange={(e) => setToDate(e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(e, generateButtonRef)}
-                  className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                  required
-                  aria-required="true"
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="mt-8 flex justify-center">
-            <button
-              ref={generateButtonRef}
-              onClick={handleGenerateReport}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleGenerateReport();
-                }
-              }}
-              className={`w-full sm:w-1/2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-md flex items-center justify-center transition ${loading || (!isCombined && !isEmployee && selectedBranches.length === 0) ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-              disabled={loading || (!isCombined && !isEmployee && selectedBranches.length === 0)}
-              aria-label="Generate Report"
-            >
-              {loading ? (
-                <>
-                  <svg
-                    className="animate-spin h-5 w-5 mr-3 border-t-2 border-b-2 border-white rounded-full"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4"></path>
-                  </svg>
-                  Generating Report...
-                </>
-              ) : (
-                'Generate Report'
-              )}
-            </button>
-            {/* CSV Download Link: Only show if we have data */}
-            {reportData.length > 0 && (
-              <CSVLink
-                data={reportData}
-                filename={`${reportType}-report.csv`}
-                className="w-full sm:w-auto mx-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-md flex items-center justify-center transition"
-                aria-label="Download CSV"
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button" // Added type="button"
+                onClick={confirmWorkOrderSelection}
+                className="mr-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg"
               >
-                Download CSV
-              </CSVLink>
-            )}
+                Confirm
+              </button>
+              <button
+                type="button" // Added type="button"
+                onClick={() => setShowWorkOrderModal(false)}
+                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
+      )}
+
+      <h1 className="text-2xl font-semibold text-gray-700 text-center mb-8">
+        Sales Generation
+      </h1>
+
+      {/* Editing Indicator */}
+      {isEditing && (
+        <div className="bg-yellow-100 text-yellow-800 p-4 rounded-lg mb-6">
+          <p>You are editing an existing sales order (ID: {salesOrderId}).</p>
+        </div>
+      )}
+
+      {/* Progress Tracker */}
+      <div className="flex items-center mb-8 w-2/3 mx-auto">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div
+            key={i}
+            className={`flex-1 h-2 rounded-xl mx-1 ${step > i ? "bg-[#5db76d]" : "bg-gray-300"
+              } transition-all duration-300`}
+          />
+        ))}
       </div>
+
+      {authLoading ? (
+        <p className="text-center text-blue-500">Loading...</p>
+      ) : !user ? (
+        <p className="text-center text-red-500">User not authenticated.</p>
+      ) : (
+        <form
+          className="space-y-8 bg-white p-6 rounded-lg max-w-3xl mx-auto"
+          onSubmit={(e) => e.preventDefault()}
+        >
+          {/* Step 1: Fetch Work Orders */}
+          {step === 0 && lastBilledOrder && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-6 flex justify-between items-center">
+              <div>
+                <h3 className="font-medium text-blue-800">Last Billed Order</h3>
+                <p className="text-sm">
+                  <span className="font-semibold">Order ID:</span> {lastBilledOrder.sales_order_id}
+                </p>
+                <p className="text-sm">
+                  <span className="font-semibold">MR Number:</span> {lastBilledOrder.mr_number || 'N/A'}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {lastBilledOrder.created_at
+                    ? new Date(lastBilledOrder.created_at).toLocaleString()
+                    : 'N/A'
+                  }
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fetchLastBilledOrder}
+                className="text-blue-600 hover:text-blue-800"
+                disabled={isLoadingLastOrder}
+              >
+                {isLoadingLastOrder ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+          )}
+          {state.salesOrderForm.step === 0 && (
+            <div className="bg-gray-50 p-6 rounded-md shadow-inner space-y-4">
+              <h2 className="text-lg font-semibold text-gray-700">
+                Fetch Work Orders
+              </h2>
+
+              {/* Select Fetch Method */}
+              <div className="mb-4">
+                <label className="block text-gray-700 font-medium mb-1">
+                  Fetch Work Orders By:
+                </label>
+                <div className="flex space-x-4">
+                  <button
+                    type="button" // Added type="button"
+                    onClick={() =>
+                      updateSalesOrderForm({ fetchMethod: "work_order_id" })
+                    }
+                    className={`px-4 py-2 rounded-lg ${salesOrderForm.fetchMethod === "work_order_id"
+                      ? "bg-green-500 text-white"
+                      : "bg-gray-200"
+                      }`}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowRight") {
+                        e.preventDefault();
+                        document
+                          .getElementById("fetchMethod-mr_number")
+                          ?.focus();
+                      }
+                    }}
+                  >
+                    Work Order ID
+                  </button>
+                  <button
+                    type="button" // Added type="button"
+                    onClick={() =>
+                      updateSalesOrderForm({ fetchMethod: "mr_number" })
+                    }
+                    id="fetchMethod-mr_number"
+                    className={`px-4 py-2 rounded-lg ${salesOrderForm.fetchMethod === "mr_number"
+                      ? "bg-green-500 text-white"
+                      : "bg-gray-200"
+                      }`}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowRight") {
+                        e.preventDefault();
+                        document
+                          .getElementById("fetchMethod-phone_number")
+                          ?.focus();
+                      } else if (e.key === "ArrowLeft") {
+                        e.preventDefault();
+                        document
+                          .getElementById("fetchMethod-work_order_id")
+                          ?.focus();
+                      }
+                    }}
+                  >
+                    MR Number
+                  </button>
+                  <button
+                    type="button" // Added type="button"
+                    onClick={() =>
+                      updateSalesOrderForm({ fetchMethod: "phone_number" })
+                    }
+                    id="fetchMethod-phone_number"
+                    className={`px-4 py-2 rounded-lg ${salesOrderForm.fetchMethod === "phone_number"
+                      ? "bg-green-500 text-white"
+                      : "bg-gray-200"
+                      }`}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowLeft") {
+                        e.preventDefault();
+                        document
+                          .getElementById("fetchMethod-mr_number")
+                          ?.focus();
+                      }
+                    }}
+                  >
+                    Phone Number
+                  </button>
+                </div>
+              </div>
+
+              {/* Enter Work Order ID, MR Number, or Phone Number */}
+              <label className="block text-gray-700 font-medium mb-1">
+                {fetchMethod === "work_order_id"
+                  ? "Enter Work Order ID"
+                  : fetchMethod === "mr_number"
+                    ? "Enter MR Number"
+                    : "Enter Phone Number"}
+              </label>
+              <input
+                type="text"
+                placeholder={
+                  fetchMethod === "work_order_id"
+                    ? "Work Order ID"
+                    : fetchMethod === "mr_number"
+                      ? "MR Number"
+                      : "Phone Number"
+                }
+                value={state.salesOrderForm.searchQuery}
+                ref={workOrderInputRef}
+                onChange={handleSearchQueryChange}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleFetchWorkOrders();
+                  }
+                  // Handle Arrow Keys for navigation
+                  else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    fetchButtonRef.current?.focus();
+                  }
+                }}
+                className="border border-gray-300 w-full px-4 py-3 rounded-lg"
+              />
+
+              {validationErrors.searchQuery && (
+                <p className="text-red-500 text-xs mt-1">
+                  {validationErrors.searchQuery}
+                </p>
+              )}
+
+              {validationErrors.generalError && (
+                <p className="text-red-500 text-xs mt-1">
+                  {validationErrors.generalError}
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={handleFetchWorkOrders}
+                ref={fetchButtonRef}
+                disabled={hasProceededWithoutWorkOrder}
+                className={`mt-2 ${hasProceededWithoutWorkOrder
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-green-500 hover:bg-green-600"
+                  } text-white px-4 py-2 rounded-lg transition`}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    workOrderInputRef.current?.focus();
+                  }
+                }}
+              >
+                Fetch Work Orders
+              </button>
+
+              {workOrders.length > 0 ? (
+                <div className="mt-4">
+                  <h3 className="text-md font-semibold text-gray-700 mb-4">
+                    Select a Work Order
+                  </h3>
+                  <ul className="space-y-4">
+                    {workOrders.map((workOrder, index) => (
+                      <li
+                        key={workOrder.id}
+                        className="bg-green-50 p-4 rounded-md shadow-md"
+                      >
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p>
+                              <strong>Work Order ID:</strong>{" "}
+                              {workOrder.work_order_id}
+                            </p>
+                            <p>
+                              <strong>Advance Paid:</strong> ₹
+                              {parseFloat(workOrder.advance_details).toFixed(2)}
+                            </p>
+                            <p>
+                              <strong>Created At:</strong>{" "}
+                              {convertUTCToIST(workOrder.created_at)}
+                            </p>
+                          </div>
+                          <button
+                            type="button" // Added type="button"
+                            ref={index === 0 ? firstWorkOrderButtonRef : null}
+                            onClick={() => handleSelectWorkOrder(workOrder)}
+                            id={`workOrderButton-${index}`}
+                            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition"
+                            onKeyDown={(e) => {
+                              if (e.key === "ArrowRight") {
+                                e.preventDefault();
+                                if (index < workOrders.length - 1) {
+                                  document
+                                    .getElementById(
+                                      `workOrderButton-${index + 1}`
+                                    )
+                                    ?.focus();
+                                } else {
+                                  proceedButtonRef.current?.focus();
+                                }
+                              } else if (e.key === "ArrowLeft") {
+                                e.preventDefault();
+                                document
+                                  .getElementById(
+                                    `workOrderButton-${index - 1}`
+                                  )
+                                  ?.focus();
+                              }
+                            }}
+                          >
+                            Select
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <p>No work orders found for this search.</p>
+                  <button
+                    type="button" // Added type="button"
+                    onClick={handleProceedWithoutWorkOrder}
+                    ref={proceedButtonRef}
+                    className="mt-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition"
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        fetchButtonRef.current?.focus();
+                      }
+                    }}
+                  >
+                    Proceed to Step 1
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 2: Product Details */}
+          {state.salesOrderForm.step === 1 && (
+            <div className="w-full bg-gray-50 p-6 rounded-md shadow-inner space-y-6">
+              <h2 className="text-lg font-semibold text-gray-700 text-center">
+                Product Information
+              </h2>
+              <label className="block text-gray-700 font-medium mb-1">
+                Generated Sales ID
+              </label>
+              <input
+                type="text"
+                value={salesOrderId}
+                readOnly
+                className="border border-gray-300 px-4 py-3 rounded-lg bg-gray-200 text-gray-700 w-full text-center"
+              />
+              <label className="block text-gray-700 font-medium mb-1">
+                Product Details
+              </label>
+              <div className="space-y-6">
+                {productEntries &&
+                  Array.isArray(productEntries) &&
+                  productEntries.map((product, index) => (
+                    <div
+                      key={index}
+                      className="flex space-x-2 items-center relative"
+                    >
+                      {/* Product ID Input */}
+                      <div className="relative w-2/4">
+                        <input
+                          type="text"
+                          id={`productId-${index}`}
+                          placeholder="Enter Product ID"
+                          value={product.product_id || ""}
+                          onChange={async (e) => {
+                            const value = e.target.value.trim();
+                            const updatedSuggestions = [...productSuggestions];
+                            if (value) {
+                              updatedSuggestions[index] =
+                                await fetchProductSuggestions(value, "id");
+                            } else {
+                              updatedSuggestions[index] = [];
+                            }
+                            setProductSuggestions(updatedSuggestions);
+
+                            handleProductChange(index, "product_id", value); // Update product_id field
+                            await handleProductInputChange(index, value); // Fetch product details
+                          }}
+                          onBlur={async () => {
+                            const selectedProduct = productSuggestions[
+                              index
+                            ]?.find(
+                              (prod) => prod.product_id === product.product_id // Corrected comparison
+                            );
+                            if (selectedProduct) {
+                              // Automatically fetch data and move focus to quantity
+                              const productDetails =
+                                await fetchProductDetailsFromDatabase(
+                                  selectedProduct.product_id,
+                                  branch
+                                );
+                              if (productDetails) {
+                                handleProductChange(
+                                  index,
+                                  "product_id",
+                                  productDetails.product_id
+                                );
+                                handleProductChange(
+                                  index,
+                                  "name",
+                                  productDetails.product_name
+                                );
+                                handleProductChange(
+                                  index,
+                                  "price",
+                                  productDetails.mrp || ""
+                                );
+                                handleProductChange(
+                                  index,
+                                  "stock",
+                                  productDetails.stock || 0
+                                );
+                                if (productDetails.stock > 0) {
+                                  setTimeout(() => {
+                                    quantityRefs.current[index]?.focus();
+                                  }, 100);
+                                }
+                              }
+                            }
+                          }}
+                          list={`productIdSuggestions-${index}`}
+                          className="border border-gray-300 px-4 py-3 rounded-lg w-full"
+                          onKeyDown={(e) => {
+                            if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              document
+                                .getElementById(`productQuantity-${index}`)
+                                ?.focus();
+                            }
+                          }}
+                        />
+                        <datalist id={`productIdSuggestions-${index}`}>
+                          {productSuggestions[index] &&
+                            productSuggestions[index].map((suggestion) => (
+                              <option
+                                key={suggestion.product_id}
+                                value={suggestion.product_id}
+                              />
+                            ))}
+                        </datalist>
+
+                        {validationErrors[`productId-${index}`] && (
+                          <p className="text-red-500 text-xs absolute -bottom-5 left-0">
+                            {validationErrors[`productId-${index}`]}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Product Name Input (Read-Only) */}
+                      <div className="relative w-1/2">
+                        <input
+                          type="text"
+                          value={product.name}
+                          readOnly
+                          className="border border-gray-300 px-4 py-3 rounded-lg w-full bg-gray-100"
+                        />
+                      </div>
+
+                      {/* Product Price Input (Editable) */}
+                      <div className="relative w-1/3">
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          placeholder="Price"
+                          value={product.price}
+                          onChange={(e) =>
+                            handleProductChange(index, "price", e.target.value)
+                          }
+                          className="border border-gray-300 px-4 py-3 rounded-lg w-full text-center bg-white"
+                        />
+                        {validationErrors[`productPrice-${index}`] && (
+                          <p className="text-red-500 text-xs absolute -bottom-5 left-0">
+                            {validationErrors[`productPrice-${index}`]}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Quantity Input */}
+                      <div className="relative w-2/4">
+
+                        <input
+                          type="number"
+                          id={`productQuantity-${index}`}
+                          placeholder="Quantity"
+                          value={product.quantity}
+                          onChange={(e) =>
+                            handleProductChange(
+                              index,
+                              "quantity",
+                              e.target.value
+                            )
+                          }
+                          className="border border-gray-300 px-4 py-3 rounded-lg w-full text-center"
+                          min="1"
+                          max={product.stock} // Prevent ordering more than available stock
+                          ref={(el) => (quantityRefs.current[index] = el)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              if (e.shiftKey) {
+                                // Shift + Enter: Add new product field and focus on first product ID
+                                updateSalesOrderForm({
+                                  productEntries: [
+                                    ...productEntries,
+                                    {
+                                      id: "",
+                                      product_id: "",
+                                      name: "",
+                                      price: "",
+                                      quantity: "",
+                                    },
+                                  ],
+                                });
+                                setOriginalProductEntries([
+                                  ...originalProductEntries,
+                                  {
+                                    id: "",
+                                    product_id: "",
+                                    name: "",
+                                    price: "",
+                                    quantity: "",
+                                  },
+                                ]); // Update original entries
+                                setProductSuggestions([
+                                  ...productSuggestions,
+                                  [],
+                                ]);
+                                setTimeout(
+                                  () =>
+                                    document
+                                      .getElementById(
+                                        `productId-${productEntries.length}`
+                                      )
+                                      ?.focus(),
+                                  0
+                                );
+                              } else {
+                                // Enter: Proceed to the next step
+                                nextStep();
+                              }
+                            }
+                            // Handle Arrow Keys for navigation
+                            else if (e.key === "ArrowRight") {
+                              e.preventDefault();
+                              // Focus on the next input field, e.g., price or delete button
+                              const nextIndex = index + 1;
+                              if (nextIndex < productEntries.length) {
+                                document
+                                  .getElementById(`productId-${nextIndex}`)
+                                  ?.focus();
+                              }
+                            } else if (e.key === "ArrowLeft") {
+                              e.preventDefault();
+                              document
+                                .getElementById(`productPrice-${index}`)
+                                ?.focus();
+                            }
+                          }}
+                        />
+
+                        {validationErrors[`productQuantity-${index}`] && (
+                          <p className="text-red-500 text-xs absolute -bottom-5 left-0">
+                            {validationErrors[`productQuantity-${index}`]}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Delete Button */}
+                      <button
+                        type="button"
+                        onClick={() => removeProductEntry(index)}
+                        className="text-red-500 hover:text-red-700 transition"
+                        onKeyDown={(e) => {
+                          if (e.key === "ArrowLeft") {
+                            e.preventDefault();
+                            document
+                              .getElementById(`productQuantity-${index}`)
+                              ?.focus();
+                          }
+                        }}
+                        aria-label={`Remove Product ${index + 1}`}
+                      >
+                        <TrashIcon className="w-5 h-5" />
+                      </button>
+                    </div>
+                  ))}
+                <button
+                  type="button" // Ensure type="button" to prevent form submission
+                  onClick={() => {
+                    updateSalesOrderForm({
+                      productEntries: [
+                        ...productEntries,
+                        {
+                          id: "",
+                          product_id: "",
+                          name: "",
+                          price: "",
+                          quantity: "",
+                        },
+                      ],
+                    });
+                    setOriginalProductEntries([
+                      ...originalProductEntries,
+                      {
+                        id: "",
+                        product_id: "",
+                        name: "",
+                        price: "",
+                        quantity: "",
+                      },
+                    ]); // Update original entries
+                    setProductSuggestions([...productSuggestions, []]);
+                    setTimeout(
+                      () =>
+                        document
+                          .getElementById(`productId-${productEntries.length}`)
+                          ?.focus(),
+                      0
+                    );
+                  }}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition"
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      document
+                        .getElementById(`productId-${productEntries.length}`)
+                        ?.focus();
+                    }
+                  }}
+                >
+                  Add Product
+                </button>
+
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Patient or Customer Details */}
+          {state.salesOrderForm.step === 2 && (
+            <div className="bg-gray-50 p-6 rounded-md shadow-inner space-y-4">
+              <h2 className="text-lg font-semibold text-gray-700">
+                Patient or Customer Information
+              </h2>
+
+              <p className="font-semibold mb-2">Do you have an MR Number?</p>
+              <div className="flex space-x-4 mb-4">
+                <button
+                  type="button" // Added type="button"
+                  id="hasMrNumber-yes"
+                  onClick={() => updateSalesOrderForm({ hasMrNumber: "yes" })}
+                  className={`px-4 py-2 rounded-lg ${hasMrNumber === "yes"
+                    ? "bg-green-500 text-white"
+                    : "bg-gray-200"
+                    }`}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowRight") {
+                      e.preventDefault();
+                      document.getElementById("hasMrNumber-no")?.focus();
+                    }
+                  }}
+                >
+                  Yes
+                </button>
+                <button
+                  type="button" // Added type="button"
+                  id="hasMrNumber-no"
+                  onClick={() => updateSalesOrderForm({ hasMrNumber: "no" })}
+                  className={`px-4 py-2 rounded-lg ${hasMrNumber === "no"
+                    ? "bg-green-500 text-white"
+                    : "bg-gray-200"
+                    }`}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowLeft") {
+                      e.preventDefault();
+                      document.getElementById("hasMrNumber-yes")?.focus();
+                    }
+                  }}
+                >
+                  No
+                </button>
+              </div>
+
+              {/* Conditional Fields */}
+              {hasMrNumber === "yes" && (
+                <>
+                  <label className="block text-gray-700 font-medium mb-1">
+                    Enter MR Number
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter MR Number"
+                    value={mrNumber}
+                    onChange={(e) =>
+                      updateSalesOrderForm({ mrNumber: e.target.value })
+                    }
+                    onKeyDown={(e) => handleEnterKey(e, fetchButtonRef, null)}
+                    ref={mrNumberRef}
+                    className="border border-gray-300 w-full px-4 py-3 rounded-lg"
+                  />
+
+                  {validationErrors.mrNumber && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.mrNumber}
+                    </p>
+                  )}
+                  <button
+                    type="button" // Added type="button"
+                    onClick={() => {
+                      handleMRNumberSearch();
+                      // No need to focus next button here as focus is managed in handleMRNumberSearch
+                    }}
+                    ref={fetchButtonRef}
+                    className="mt-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition"
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        mrNumberRef.current?.focus();
+                      }
+                    }}
+                  >
+                    Fetch Patient Details
+                  </button>
+                  {patientDetails && (
+                    <div className="mt-4 bg-gray-100 p-4 rounded border border-gray-200">
+                      <p>
+                        <strong>Name:</strong> {patientDetails.name}
+                      </p>
+                      <p>
+                        <strong>Age:</strong> {patientDetails.age}
+                      </p>
+                      <p>
+                        <strong>Gender:</strong> {patientDetails.gender}
+                      </p>
+                      <p>
+                        <strong>Address:</strong> {patientDetails.address}
+                      </p>
+                      <p>
+                        <strong>Phone number:</strong>{" "}
+                        {patientDetails.phone_number}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {hasMrNumber === "no" && (
+                <>
+                  <label className="block text-gray-700 font-medium mb-1">
+                    Enter Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter Name"
+                    value={customerName}
+                    onChange={(e) =>
+                      updateSalesOrderForm({ customerName: e.target.value })
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        customerPhoneRef.current?.focus();
+                      }
+                    }}
+                    ref={customerNameRef}
+                    className="border border-gray-300 w-full px-4 py-3 rounded-lg"
+                  />
+
+                  {validationErrors.customerName && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.customerName}
+                    </p>
+                  )}
+
+                  <label className="block text-gray-700 font-medium mb-1">
+                    Enter Phone Number
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter Phone Number"
+                    value={customerPhone}
+                    onChange={(e) =>
+                      updateSalesOrderForm({ customerPhone: e.target.value })
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        customerNameRef.current?.focus();
+                      }
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        // Optionally, auto-create customer or proceed
+                        nextButtonRef.current?.focus();
+                      }
+                    }}
+                    ref={customerPhoneRef}
+                    className="border border-gray-300 w-full px-4 py-3 rounded-lg"
+                  />
+
+                  {validationErrors.customerPhone && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.customerPhone}
+                    </p>
+                  )}
+
+                  {/* Additional Fields: Address, Gender, Age */}
+                  <label className="block text-gray-700 font-medium mb-1">
+                    Enter Address
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter Address"
+                    value={address}
+                    onChange={(e) =>
+                      updateSalesOrderForm({ address: e.target.value })
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        genderRef.current?.focus();
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        customerPhoneRef.current?.focus();
+                      }
+                    }}
+                    ref={addressRef}
+                    className="border border-gray-300 w-full px-4 py-3 rounded-lg"
+                  />
+
+                  {validationErrors.address && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.address}
+                    </p>
+                  )}
+
+                  <label className="block text-gray-700 font-medium mb-1">
+                    Select Gender
+                  </label>
+                  <select
+                    value={gender}
+                    onChange={(e) =>
+                      updateSalesOrderForm({ gender: e.target.value })
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        ageRef.current?.focus();
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        addressRef.current?.focus();
+                      }
+                    }}
+                    ref={genderRef}
+                    className="border border-gray-300 w-full px-4 py-3 rounded-lg"
+                  >
+                    <option value="" disabled>
+                      Select Gender
+                    </option>
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+
+                  {validationErrors.gender && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.gender}
+                    </p>
+                  )}
+
+                  <label className="block text-gray-700 font-medium mb-1">
+                    Enter Age
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="Enter Age"
+                    value={age}
+                    onChange={(e) =>
+                      updateSalesOrderForm({ age: e.target.value })
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        nextButtonRef.current?.focus();
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        genderRef.current?.focus();
+                      }
+                    }}
+                    ref={ageRef}
+                    className="border border-gray-300 w-full px-4 py-3 rounded-lg"
+                    min="1"
+                  />
+
+                  {validationErrors.age && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.age}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Privilege Card */}
+          {state.salesOrderForm.step === 3 && (
+            <div className="bg-gray-50 p-6 rounded-md shadow-inner space-y-4">
+              <h2 className="text-lg font-semibold text-gray-700">
+                Privilege Card
+              </h2>
+
+              <p className="font-semibold mb-2">
+                Do you have a Privilege Card?
+              </p>
+              <div className="flex space-x-4 mb-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    dispatch({
+                      type: "SET_SALES_ORDER_FORM",
+                      payload: { privilegeCard: true, redeemOption: null },
+                    }); // Reset redeemOption
+                    dispatch({
+                      type: "SET_SALES_ORDER_FORM",
+                      payload: {
+                        validationErrors: {
+                          ...state.salesOrderForm.validationErrors,
+                          generalError: "",
+                        },
+                      },
+                    }); // Clear previous errors
+                    setTimeout(() => {
+                      if (salesOrderForm.redeemOption === "barcode") {
+                        privilegeCardRef.current?.focus();
+                      } else if (salesOrderForm.redeemOption === "phone") {
+                        privilegePhoneRef.current?.focus();
+                      }
+                    }, 0);
+                  }}
+                  className={`px-4 py-2 rounded-lg ${state.salesOrderForm.privilegeCard
+                    ? "bg-green-500 text-white"
+                    : "bg-gray-200"
+                    }`}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowRight") {
+                      e.preventDefault();
+                      document.getElementById("privilegeCard-no")?.focus();
+                    }
+                  }}
+                >
+                  Yes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    dispatch({
+                      type: "SET_SALES_ORDER_FORM",
+                      payload: { privilegeCard: false, redeemOption: null },
+                    }); // Reset redeemOption
+                    dispatch({
+                      type: "SET_SALES_ORDER_FORM",
+                      payload: {
+                        validationErrors: {
+                          ...state.salesOrderForm.validationErrors,
+                          generalError: "",
+                        },
+                      },
+                    }); // Clear previous errors
+                    setTimeout(() => {
+                      if (salesOrderForm.redeemOption === "barcode") {
+                        privilegeCardRef.current?.focus();
+                      } else if (salesOrderForm.redeemOption === "phone") {
+                        privilegePhoneRef.current?.focus();
+                      }
+                    }, 0);
+                  }}
+                  id="privilegeCard-no"
+                  className={`px-4 py-2 rounded-lg ${!state.salesOrderForm.privilegeCard
+                    ? "bg-green-500 text-white"
+                    : "bg-gray-200"
+                    }`}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowLeft") {
+                      e.preventDefault();
+                      document.getElementById("privilegeCard-yes")?.focus();
+                    }
+                  }}
+                >
+                  No
+                </button>
+              </div>
+
+              {state.salesOrderForm.privilegeCard && (
+                <>
+                  <p className="font-semibold mb-2">
+                    How would you like to fetch your Privilege Card?
+                  </p>
+                  <div className="flex space-x-4 mb-4">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        dispatch({
+                          type: "SET_SALES_ORDER_FORM",
+                          payload: { redeemOption: "barcode" },
+                        })
+                      }
+                      className={`px-4 py-2 rounded-lg ${state.salesOrderForm.redeemOption === "barcode"
+                        ? "bg-green-500 text-white"
+                        : "bg-gray-200"
+                        }`}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowRight") {
+                          e.preventDefault();
+                          document
+                            .getElementById("redeemOption-phone")
+                            ?.focus();
+                        } else if (e.key === "ArrowLeft") {
+                          e.preventDefault();
+                          document
+                            .getElementById("redeemOption-barcode")
+                            ?.focus();
+                        }
+                      }}
+                      id="redeemOption-barcode"
+                    >
+                      Scan Barcode
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        dispatch({
+                          type: "SET_SALES_ORDER_FORM",
+                          payload: { redeemOption: "phone" },
+                        })
+                      }
+                      className={`px-4 py-2 rounded-lg ${state.salesOrderForm.redeemOption === "phone"
+                        ? "bg-green-500 text-white"
+                        : "bg-gray-200"
+                        }`}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowLeft") {
+                          e.preventDefault();
+                          document
+                            .getElementById("redeemOption-barcode")
+                            ?.focus();
+                        }
+                      }}
+                      id="redeemOption-phone"
+                    >
+                      Use Phone Number
+                    </button>
+                  </div>
+
+                  {/* Barcode Scan Option */}
+                  {state.salesOrderForm.redeemOption === "barcode" && (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="Enter Privilege Card Number (pc_number)"
+                        value={state.salesOrderForm.privilegeCardNumber}
+                        onChange={(e) =>
+                          dispatch({
+                            type: "SET_SALES_ORDER_FORM",
+                            payload: { privilegeCardNumber: e.target.value },
+                          })
+                        }
+                        className="border border-gray-300 w-full px-4 py-3 rounded-lg text-center mb-2"
+                        ref={privilegeCardRef}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleFetchPrivilegeCardByNumber();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleFetchPrivilegeCardByNumber}
+                        className="bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg w-full"
+                        onKeyDown={(e) => {
+                          if (e.key === "ArrowLeft") {
+                            e.preventDefault();
+                            privilegeCardRef.current?.focus();
+                          }
+                        }}
+                      >
+                        Fetch Privilege Card
+                      </button>
+                      {state.salesOrderForm.validationErrors
+                        ?.privilegeCardNumber && (
+                          <p className="text-red-500 text-xs mt-1">
+                            {
+                              state.salesOrderForm.validationErrors
+                                .privilegeCardNumber
+                            }
+                          </p>
+                        )}
+                    </>
+                  )}
+
+                  {/* Phone Number and OTP Option */}
+                  {state.salesOrderForm.redeemOption === "phone" && (
+                    <>
+                      {/* Phone Number Input */}
+                      <input
+                        type="text"
+                        placeholder="Enter Phone Number"
+                        value={state.salesOrderForm.phoneNumber}
+                        onChange={(e) =>
+                          dispatch({
+                            type: "SET_SALES_ORDER_FORM",
+                            payload: { phoneNumber: e.target.value },
+                          })
+                        }
+                        className="border border-gray-300 w-full px-4 py-3 rounded-lg text-center mb-2"
+                        ref={privilegePhoneRef}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleSendOtp();
+                          }
+                          if (e.key === "ArrowRight") {
+                            e.preventDefault();
+                            // Optionally, move to Send OTP button
+                            // Assuming there is no next field
+                          }
+                          if (e.key === "ArrowLeft") {
+                            e.preventDefault();
+                            document
+                              .getElementById("redeemOption-phone")
+                              ?.focus();
+                          }
+                        }}
+                      />
+
+                      {/* Send OTP Button */}
+                      {!state.salesOrderForm.isOtpSent && (
+                        <button
+                          type="button"
+                          onClick={handleSendOtp}
+                          className="mt-4 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg w-full"
+                          onKeyDown={(e) => {
+                            if (e.key === "ArrowLeft") {
+                              e.preventDefault();
+                              privilegePhoneRef.current?.focus();
+                            }
+                          }}
+                        >
+                          Send OTP
+                        </button>
+                      )}
+
+                      {state.salesOrderForm.isOtpSent && (
+                        <>
+                          {/* OTP Input */}
+                          <input
+                            type="text"
+                            placeholder="Enter OTP"
+                            value={state.salesOrderForm.otp}
+                            onChange={(e) =>
+                              dispatch({
+                                type: "SET_SALES_ORDER_FORM",
+                                payload: { otp: e.target.value },
+                              })
+                            }
+                            className="border border-gray-300 w-full px-4 py-3 rounded-lg text-center mb-2"
+                            ref={otpRef}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleVerifyOtp();
+                              }
+                              if (e.key === "ArrowLeft") {
+                                e.preventDefault();
+                                document
+                                  .getElementById("redeemOption-phone")
+                                  ?.focus();
+                              }
+                            }}
+                          />
+                          {validationErrors.otp && (
+                            <p className="text-red-500 text-xs mt-1">
+                              {validationErrors.otp}
+                            </p>
+                          )}
+
+                          {/* Verify OTP Button */}
+                          <button
+                            type="button"
+                            onClick={handleVerifyOtp}
+                            className="bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg w-full"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleVerifyOtp();
+                                setTimeout(() => {
+                                  nextButtonRef.current?.focus();
+                                }, 0);
+                              }
+                            }}
+                          >
+                            Verify OTP
+                          </button>
+
+                          {/* Display Error Messages */}
+                          {validationErrors.generalError && (
+                            <p className="text-red-600 text-center mt-2">
+                              {validationErrors.generalError}
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  {/* Show privilege card details if found */}
+                  {state.salesOrderForm.isOtpVerified &&
+                    state.salesOrderForm.privilegeCardDetails && (
+                      <div className="mt-6 bg-gray-100 p-4 rounded border">
+                        <p>
+                          <strong>Name:</strong>{" "}
+                          {
+                            state.salesOrderForm.privilegeCardDetails
+                              .customer_name
+                          }
+                        </p>
+                        <p>
+                          <strong>PC Number:</strong>{" "}
+                          {privilegeCardDetails.pc_number}
+                        </p>
+                        <p>
+                          <strong>Loyalty Points:</strong> {loyaltyPoints}
+                        </p>
+
+                        {/* Redeem Points Section */}
+                        <div className="mt-4">
+                          <p className="font-semibold">
+                            Redeem Loyalty Points:
+                          </p>
+                          <div className="flex space-x-4 mt-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                dispatch({
+                                  type: "SET_SALES_ORDER_FORM",
+                                  payload: {
+                                    redeemOption: "full",
+                                    redeemPointsAmount: loyaltyPoints,
+                                  },
+                                });
+                                dispatch({
+                                  type: "SET_SALES_ORDER_FORM",
+                                  payload: { redeemPoints: true },
+                                });
+                              }}
+                              className={`px-4 py-2 mb-2 rounded-lg ${state.salesOrderForm.redeemOption === "full"
+                                ? "bg-green-500 text-white"
+                                : "bg-gray-200"
+                                }`}
+                            >
+                              Redeem Full Points
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                dispatch({
+                                  type: "SET_SALES_ORDER_FORM",
+                                  payload: {
+                                    redeemOption: "custom",
+                                    redeemPointsAmount: "",
+                                  },
+                                });
+                                dispatch({
+                                  type: "SET_SALES_ORDER_FORM",
+                                  payload: { redeemPoints: true },
+                                });
+                                setTimeout(
+                                  () => redeemPointsAmountRef.current?.focus(),
+                                  0
+                                ); // Focus on custom amount input
+                              }}
+                              className={`px-4 py-2 mb-2 rounded-lg ${state.salesOrderForm.redeemOption === "custom"
+                                ? "bg-green-500 text-white"
+                                : "bg-gray-200"
+                                }`}
+                            >
+                              Redeem Custom Amount
+                            </button>
+                          </div>
+
+                          {/* When 'Redeem Full' is selected */}
+                          {redeemOption === "full" && (
+                            <div className="mt-2">
+                              <input
+                                type="number"
+                                value={loyaltyPoints}
+                                readOnly
+                                className="border border-gray-300 w-full px-4 py-3 rounded-lg text-center my-2 bg-gray-100"
+                              />
+                              <p className="text-center">
+                                You are redeeming your full loyalty points.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* When 'Redeem Custom' is selected */}
+                          {state.salesOrderForm.redeemOption === "custom" && (
+                            <div className="mt-2">
+                              <input
+                                type="number"
+                                placeholder={`Enter amount to redeem (Max: ₹${loyaltyPoints})`}
+                                value={state.salesOrderForm.redeemPointsAmount}
+                                onChange={(e) =>
+                                  dispatch({
+                                    type: "SET_SALES_ORDER_FORM",
+                                    payload: {
+                                      redeemPointsAmount:
+                                        e.target.value === ""
+                                          ? ""
+                                          : Math.min(
+                                            Number(e.target.value),
+                                            loyaltyPoints
+                                          ),
+                                    },
+                                  })
+                                }
+                                className="border border-gray-300 w-full px-4 py-3 rounded-lg text-center my-2"
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    nextButtonRef.current?.focus();
+                                  }
+                                }}
+                                ref={redeemPointsAmountRef}
+                              />
+                              {(parseFloat(
+                                state.salesOrderForm.redeemPointsAmount
+                              ) > loyaltyPoints ||
+                                parseFloat(redeemPointsAmount) < 0) && (
+                                  <p className="text-red-500 text-xs mt-1">
+                                    Please enter a valid amount up to your
+                                    available points.
+                                  </p>
+                                )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Prompt to create a new privilege card if not found */}
+                  {state.salesOrderForm.isOtpVerified &&
+                    !state.salesOrderForm.privilegeCardDetails && (
+                      <div className="mt-6 bg-green-50 p-4 rounded">
+                        <p className="text-center text-red-500">
+                          No Privilege Card found for this{" "}
+                          {state.salesOrderForm.redeemOption === "phone"
+                            ? "phone number."
+                            : "PC Number."}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleNewPrivilegeCard}
+                          className="mt-4 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg w-full"
+                        >
+                          Create New Privilege Card
+                        </button>
+                      </div>
+                    )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Step 4: Employee Selection */}
+          {state.salesOrderForm.step === 4 && (
+            <div className="bg-gray-50 p-6 rounded-md shadow-inner space-y-4">
+              <h2 className="text-lg font-semibold text-gray-700">
+                Order Created by Employee Details
+              </h2>
+              <select
+                value={state.salesOrderForm.employee}
+                onChange={(e) =>
+                  dispatch({
+                    type: "SET_SALES_ORDER_FORM",
+                    payload: { employee: e.target.value },
+                  })
+                }
+                ref={employeeRef}
+                onBlur={validateEmployeeSelection}
+                className="border border-gray-300 w-full px-4 py-3 rounded-lg focus:outline-none focus:border-green-500"
+              >
+                <option value="" disabled>
+                  Select Employee
+                </option>
+                {employees.map((emp, index) => (
+                  <option key={index} value={emp}>
+                    {emp}
+                  </option>
+                ))}
+              </select>
+              {state.salesOrderForm.employee && (
+                <EmployeeVerification
+                  employee={state.salesOrderForm.employee}
+                  onVerify={(isVerified) => {
+                    dispatch({
+                      type: "SET_SALES_ORDER_FORM",
+                      payload: { isPinVerified: true },
+                    });
+
+                    if (isVerified) {
+                      setTimeout(() => nextButtonRef.current?.focus(), 100);
+                    }
+                  }}
+                />
+              )}
+              {validationErrors.employee && (
+                <p className="text-red-500 text-xs mt-1">
+                  {validationErrors.employee}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Step 5: Discount, Payment Method, Advance Details, Save and Print */}
+          {step === 5 && (
+            <>
+              {/* Printable Area */}
+              <div className="bg-white rounded-lg text-gray-800">
+                <div className="printable-area print:mt-20 print:block print:absolute print:inset-0 print:w-full bg-white p-4 print:m-0 print:p-0 w-full">
+                  {/* Header */}
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-3xl font-bold">Invoice</h2>
+                    <div className="text-right">
+                      <p>
+                        Date:<strong> {formattedDate}</strong>
+                      </p>
+                      <p>
+                        Time:<strong> {currentTime}</strong>
+                      </p>
+                      <p>
+                        Invoice No:<strong> {salesOrderId}</strong>
+                      </p>
+
+                      {hasMrNumber && (
+                        <p>
+                          MR No:<strong> {mrNumber || "NA"}</strong>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {step === 5 && salesOrderForm.insuranceInfo && (
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <h3 className="font-semibold text-blue-800">Insurance Information</h3>
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        <div>
+                          <p className="text-sm text-gray-600">Insurance Provider:</p>
+                          <p className="font-medium">{salesOrderForm.insuranceInfo.insurance_name}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Approved Amount:</p>
+                          <p className="font-medium">₹{parseFloat(salesOrderForm.insuranceInfo.approved_amount).toFixed(2)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+
+
+
+                  {/* Customer Details */}
+                  <div className="mb-6">
+                    <p>
+                      Name:
+                      <strong>
+                        {" "}
+                        {hasMrNumber === "yes"
+                          ? `${patientDetails?.name || "N/A"} | ${patientDetails?.age || "N/A"
+                          } | ${patientDetails?.gender || "N/A"}`
+                          : `${customerName || "N/A"} | ${parseInt(age) || "N/A"
+                          } | ${gender || "N/A"}`}
+                      </strong>
+                    </p>
+                    <p>
+                      Address:
+                      <strong>
+                        {" "}
+                        {hasMrNumber === "yes"
+                          ? `${patientDetails?.address || "N/A"}`
+                          : `${address || "N/A"}`}
+                      </strong>
+                    </p>
+                    <p>
+                      Phone Number:
+                      <strong>
+                        {" "}
+                        {hasMrNumber === "yes"
+                          ? `${patientDetails?.phone_number || "N/A"}`
+                          : `${customerPhone || "N/A"}`}
+                      </strong>
+                    </p>
+                    <p className="mt-2">
+                      <label>Consultant:</label>
+                      {!useManualConsultant && (
+                        <select
+                          value={consultantName}
+                          onChange={(e) => setConsultantName(e.target.value)}
+                        >
+                          <option value="">Select Consultant</option>
+                          {consultantList.map((consultant, idx) => (
+                            <option key={idx} value={consultant}>
+                              {consultant}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {/* Checkbox to switch between dropdown and manual input */}
+                      <div>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={useManualConsultant}
+                            onChange={(e) => {
+                              setUseManualConsultant(e.target.checked);
+                              if (!e.target.checked) {
+                                setConsultantName("");
+                              }
+                            }}
+                          />
+                          Enter Manually
+                        </label>
+                      </div>
+                      {/* Manually input consultant name if checkbox selected */}
+                      {useManualConsultant && (
+                        <input
+                          type="text"
+                          placeholder="Enter consultant name"
+                          value={consultantName}
+                          onChange={(e) => setConsultantName(e.target.value)}
+                        />
+                      )}
+                    </p>
+                  </div>
+
+                  {selectedWorkOrder && selectedWorkOrder.is_insurance && (
+                    <div className="mt-2 p-2 bg-blue-50 rounded-md">
+                      <p className="font-medium text-blue-800">Insurance Work Order</p>
+                      <p>
+                        <strong>Insurance:</strong>{" "}
+                        {selectedWorkOrder.insurance_name || "Not specified"}
+                      </p>
+                      {/* ... */}
+                    </div>
+                  )}
+
+                  {/* Product Table */}
+                  <table className="w-full border-collapse mb-6">
+                    <thead>
+                      <tr>
+                        <th className="border px-4 py-2">No.</th>
+                        {/* <th className="border px-4 py-2">Product ID</th> */}
+                        <th className="border px-4 py-2">Service Name</th>
+                        {/* <th className="border px-4 py-2">Price</th>
+                        <th className="border px-4 py-2">Quantity</th> */}
+                        <th className="border px-4 py-2">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productEntries.map((product, index) => {
+                        const price = parseFloat(product.price) || 0;
+                        const quantity = parseInt(product.quantity) || 0;
+                        const subtotal = price * quantity;
+                        return (
+                          <tr key={index}>
+                            <td className="border px-4 py-2 text-center">
+                              {index + 1}
+                            </td>
+                            {/* <td className="border px-4 py-2 text-center">
+                              {product.product_id}
+                            </td> */}
+                            <td className="border px-4 py-2">{product.name}</td>
+                            {/* <td className="border px-4 py-2 text-center">
+                              ₹{price.toFixed(2)}
+                            </td> */}
+                            {/* <td className="border px-4 py-2 text-center">
+                              {quantity}
+                            </td> */}
+                            <td className="border px-4 py-2 text-center">
+                              ₹{subtotal.toFixed(2)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  {/* Financial Summary */}
+                  <div className="flex justify-between mb-6 space-x-8">
+
+                    <div>
+
+                      <p>
+                        Total Amount:
+                        <strong> ₹{parseFloat(taxableValue).toFixed(2)}</strong>
+                      </p>
+
+                      {/* Add insurance deduction if applicable */}
+                      {salesOrderForm.insuranceInfo && (
+                        <p className="text-blue-600">
+                          Insurance Coverage:
+                          <strong> -₹{parseFloat(salesOrderForm.insuranceInfo.approved_amount).toFixed(2)}</strong>
+                        </p>
+                      )}
+
+                      <p className="font-bold">
+                        Final Amount Paid:
+                        <strong> ₹{
+                          salesOrderForm.insuranceInfo
+                            ? (parseFloat(taxableValue) - parseFloat(salesOrderForm.insuranceInfo.approved_amount)).toFixed(2)
+                            : parseFloat(taxableValue).toFixed(2)
+                        }</strong>
+                      </p>
+
+                      {/* Billed By */}
+                      <div className="mt-4">
+                        <div className="mt-10 space-x-8">
+                          <p>
+                            Billed by:<strong> {employee || "N/A"}</strong>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Loyalty Points Information */}
+                  {privilegeCard && privilegeCardDetails && (
+                    <div className="loyalty-points mb-6">
+                      <p>
+                        <span className="font-semibold">
+                          Loyalty Points Redeemed:
+                        </span>{" "}
+                        ₹{parseFloat(redeemPointsAmount || 0).toFixed(2)}
+                      </p>
+                      <p>
+                        <span className="font-semibold">
+                          Loyalty Points Gained:
+                        </span>{" "}
+                        {pointsToAdd}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Payment Method and Discount Details */}
+                  <div className="print:hidden flex flex-col md:flex-row items-center justify-between my-6 space-x-4">
+                    {/* Discount Section */}
+                    <div className="w-full md:w-1/2 mb-4 md:mb-0">
+                      <label className="block text-gray-700 font-medium mb-1">
+                        Apply Discount (₹)
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="Enter Discount Amount"
+                        value={discount}
+                        ref={discountInputRef}
+                        onChange={(e) => {
+                          const discountValue = e.target.value;
+                          updateSalesOrderForm({ discount: discountValue });
+                        }}
+                        className="border border-gray-300 w-full px-4 py-3 rounded-lg"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            paymentMethodRef.current?.focus();
+                          }
+                        }}
+                      />
+                      {validationErrors.discount && (
+                        <p className="text-red-500 text-xs mt-1">
+                          {validationErrors.discount}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Payment Method */}
+                    <div className="w-full md:w-1/2">
+                      <label
+                        htmlFor="paymentMethod"
+                        className="block font-semibold mb-1"
+                      >
+                        Payment Method:
+                      </label>
+                      <select
+                        id="paymentMethod"
+                        value={paymentMethod}
+                        onChange={(e) =>
+                          updateSalesOrderForm({
+                            paymentMethod: e.target.value,
+                          })
+                        }
+                        ref={paymentMethodRef}
+                        onKeyDown={(e) => handleEnterKey(e, saveOrderRef)}
+                        className="border border-gray-300 w-full px-4 py-3 rounded-lg"
+                      >
+                        <option value="" disabled>
+                          Select Payment Method
+                        </option>
+                        <option value="cash">Cash</option>
+                        <option value="card">Card</option>
+                        <option value="online">UPI (Paytm/PhonePe/GPay)</option>
+                        <option value="credit">Credit</option>
+                        {/* <option value="online">UPI (Paytm/PhonePe/GPay)</option> */}
+                      </select>
+                      {validationErrors.paymentMethod && (
+                        <p className="text-red-500 text-xs ml-1">
+                          {validationErrors.paymentMethod}
+                        </p>
+                      )}
+                    </div>
+
+                    {step === 5 && salesOrderForm.showSuccessMessage && (
+                      <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded">
+                        <div className="flex items-center">
+                          <svg className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                          <p className="font-semibold">Sales Order saved successfully!</p>
+                        </div>
+                        <p className="text-sm mt-1">You can now print the invoice or exit.</p>
+                      </div>
+                    )}
+                  </div>
+
+
+                </div>
+              </div>
+
+
+
+              {/* Replace the buttons container div with this updated version */}
+              <div className="flex justify-center text-center space-x-4 mt-6 print:hidden">
+                <button
+                  type="button"
+                  onClick={saveSalesOrder}
+                  ref={saveOrderRef}
+                  className={`flex items-center justify-center w-44 h-12 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition ${isSaving || submitted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={isSaving || submitted}
+                  aria-label="Save Sales Order"
+                >
+                  {isSaving
+                    ? "Saving..."
+                    : submitted
+                      ? "Order Submitted"
+                      : "Save Sales Order"}
+                </button>
+
+                {allowPrint && (
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    ref={printButtonRef}
+                    className="flex items-center justify-center w-44 h-12 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition"
+                    aria-label="Print Sales Order"
+                  >
+                    <PrinterIcon className="w-5 h-5 mr-2" />
+                    Print
+                  </button>
+                )}
+
+                {allowPrint && (
+                  <button
+                    type="button"
+                    onClick={handleExit}
+                    className="flex items-center justify-center w-44 h-12 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition"
+                    aria-label="Exit Sales Order Generation"
+                  >
+                    <XMarkIcon className="w-5 h-5 mr-2" />
+                    Exit
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Navigation Buttons */}
+          <div className="flex justify-center mt-6">
+            {step > 0 && (
+              <button
+                type="button" // Added type="button"
+                onClick={prevStep}
+                className="bg-green-500 hover:bg-green-600 text-white mx-2 px-4 py-2 rounded-lg"
+              >
+                Previous
+              </button>
+            )}
+            {step < 5 && (
+              <button
+                type="button" // Added type="button"
+                ref={nextButtonRef}
+                onClick={nextStep}
+                className={`bg-green-500 hover:bg-green-600 text-white mx-2 px-4 py-2 rounded-lg ${step === 4 && !salesOrderForm.isPinVerified
+                  ? "opacity-50 cursor-not-allowed"
+                  : ""
+                  }`}
+                disabled={step === 4 && !salesOrderForm.isPinVerified}
+              >
+                Next
+              </button>
+            )}
+          </div>
+        </form>
+      )}
     </div>
   );
-};
+});
 
-export default ReportGenerator;
-
-
-
-
-
+export default SalesOrderGeneration;

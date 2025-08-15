@@ -303,6 +303,15 @@ const getColumnStyles = (reportType, isEmployee = false) => {
         };
       }
 
+    case 'service_report':
+      return {
+        0: { halign: 'left', cellWidth: 70 },    // Service Name
+        1: { halign: 'center', cellWidth: 20 },  // Quantity
+        2: { halign: 'center', cellWidth: 30 },  // Total Amount
+        3: { halign: 'center', cellWidth: 35 },  // Last Service Date
+        4: { halign: 'center', cellWidth: 35 },  // Order ID
+      };
+
     case 'credit_debit_notes':
       if (isEmployee) {
         return {
@@ -384,6 +393,8 @@ const addFooter = (doc) => {
 
 const ReportGenerator = ({ isCollapsed }) => {
   const { branch: userBranch, name: employeeName, role } = useAuth();
+  const isEmployee = role !== 'admin';
+  const isAdmin = role === 'admin';
   const [reportType, setReportType] = useState(role === 'employee' ? 'consolidated' : 'sales_orders');
   const [reportPeriod, setReportPeriod] = useState('daily');
   const [date, setDate] = useState('');
@@ -391,7 +402,14 @@ const ReportGenerator = ({ isCollapsed }) => {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
-  const [selectedBranches, setSelectedBranches] = useState(role === 'employee' ? [userBranch] : [userBranch]);
+
+  const [patientMrNumber, setPatientMrNumber] = useState('');
+  const patientMrNumberRef = useRef(null);
+
+  // const [selectedBranches, setSelectedBranches] = useState(role === 'employee' ? [userBranch] : [userBranch]);
+  const [selectedBranches, setSelectedBranches] = useState(
+    isEmployee ? [userBranch] : [userBranch]
+  );
   const [allBranches, setAllBranches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -417,7 +435,6 @@ const ReportGenerator = ({ isCollapsed }) => {
   const [patients, setPatients] = useState([]);
   const [customers, setCustomers] = useState([]);
 
-  const isEmployee = role === 'employee';
 
   useEffect(() => {
     const convertImageToDataUrl = (image) => {
@@ -507,7 +524,8 @@ const ReportGenerator = ({ isCollapsed }) => {
 
       let startStr, endStr;
 
-      let branchesToReport = isCombined ? [] : selectedBranches;
+      let branchesToReport = isEmployee ? [userBranch] : (isCombined ? [] : selectedBranches);
+      const effectiveIsCombined = isEmployee ? false : isCombined;
       if (isEmployee) {
         branchesToReport = [userBranch];
         setIsCombined(false);
@@ -536,7 +554,7 @@ const ReportGenerator = ({ isCollapsed }) => {
           identifier: date,
           reportTypeLabel: getReportTypeLabel(reportType),
           branches: branchesToReport,
-          isCombined,
+          isCombined: effectiveIsCombined,
         };
       } else if (reportPeriod === 'monthly') {
         if (!monthYear) {
@@ -641,8 +659,6 @@ const ReportGenerator = ({ isCollapsed }) => {
           fetchedData = data;
           break;
         }
-        // In the case 'compiled_report' section of handleGenerateReport
-        // ...existing code...
 
         case 'compiled_report': {
           console.log("Fetching sales data with params:", { startStr, endStr });
@@ -971,7 +987,7 @@ const ReportGenerator = ({ isCollapsed }) => {
           // Fetch sales and work data first
           let salesQuery = supabase
             .from('sales_orders')
-            .select('sales_order_id, work_order_id, mr_number, subtotal, total_amount, created_at, updated_at, branch, customer_id, discount, advance_details')
+            .select('sales_order_id, work_order_id, mr_number, subtotal, total_amount, created_at, updated_at, branch, customer_id, discount, advance_details,payment_method')
             .gte('created_at', startStr)
             .lte('created_at', endStr)
             .limit(5000);
@@ -982,7 +998,7 @@ const ReportGenerator = ({ isCollapsed }) => {
 
           const salesData = await fetchAllRecords(
             'sales_orders',
-            'sales_order_id, work_order_id, mr_number, subtotal, total_amount, created_at, updated_at, branch, customer_id, discount, advance_details',
+            'sales_order_id, work_order_id, mr_number, subtotal, total_amount, created_at, updated_at, branch, customer_id, discount, advance_details , payment_method',
             {
               startStr,
               endStr,
@@ -1057,10 +1073,8 @@ const ReportGenerator = ({ isCollapsed }) => {
             }
           });
 
-          // CRITICAL FIX: Filter work orders to include only those that have NOT been converted (is_used = false)
           const unconvertedWorkOrders = workData.filter(work => work.is_used === false);
 
-          // CRITICAL FIX: Match sales orders to work orders using BOTH work_order_id AND branch
           const validSalesOrders = salesData.filter(sale => {
             // Include sales orders with no work_order_id or with work_order_id = "GENERAL"
             if (!sale.work_order_id || sale.work_order_id === "GENERAL") return true;
@@ -1087,10 +1101,8 @@ const ReportGenerator = ({ isCollapsed }) => {
             sum + (parseFloat(order.total_amount) || 0), 0
           );
 
-          // Add totalOPD to reportDetails
           reportDetails.totalOPD = totalOPD;
 
-          // Create consolidated sales data (money collected - these are completed transactions)
           const consolidatedSales = validSalesOrders.map(sale => {
             let customerName = 'N/A';
 
@@ -1109,7 +1121,8 @@ const ReportGenerator = ({ isCollapsed }) => {
               branch: sale.branch || 'N/A',
               created_at: sale.created_at ? formatDateDDMMYYYY(sale.created_at, true) : 'N/A',
               updated_at: sale.updated_at ? formatDateDDMMYYYY(sale.updated_at, true) : 'N/A',
-              raw_created_at: sale.created_at
+              raw_created_at: sale.created_at,
+              payment_method: sale.payment_method || 'N/A',
             };
           });
 
@@ -1130,7 +1143,8 @@ const ReportGenerator = ({ isCollapsed }) => {
               branch: work.branch || 'N/A',
               created_at: work.created_at ? formatDateDDMMYYYY(work.created_at, true) : 'N/A',
               updated_at: work.updated_at ? formatDateDDMMYYYY(work.updated_at, true) : 'N/A',
-              raw_created_at: work.created_at
+              raw_created_at: work.created_at,
+              payment_method: work.payment_method || 'N/A',
             };
           });
 
@@ -1144,6 +1158,131 @@ const ReportGenerator = ({ isCollapsed }) => {
           });
 
           fetchedData = consolidatedData;
+          break;
+        }
+
+
+        // Add this case in the switch statement of handleGenerateReport
+        case 'service_report': {
+          if (!patientMrNumber.trim()) {
+            setError('Please enter a valid MR number.');
+            setLoading(false);
+            return;
+          }
+
+          // First, get the patient details
+          const { data: patientData, error: patientError } = await supabase
+            .from('patients')
+            .select('name, age, gender, phone_number, address')
+            .eq('mr_number', patientMrNumber.trim())
+            .single();
+
+          if (patientError) {
+            setError('No patient found with the provided MR number.');
+            setLoading(false);
+            return;
+          }
+
+          // Fetch sales orders for this patient
+          const { data: salesOrders, error: salesError } = await supabase
+            .from('sales_orders')
+            .select('*')
+            .eq('mr_number', patientMrNumber.trim());
+
+          if (salesError) {
+            console.error('Error fetching sales orders:', salesError);
+          }
+
+          // Fetch work orders for this patient
+          const { data: workOrders, error: workError } = await supabase
+            .from('work_orders')
+            .select('*')
+            .eq('mr_number', patientMrNumber.trim());
+
+          if (workError) {
+            console.error('Error fetching work orders:', workError);
+          }
+
+          // Combine and process the data
+          const allServices = [];
+
+          // Process sales orders
+          salesOrders?.forEach(order => {
+            const entries = order.product_entries || [];
+            entries.forEach(entry => {
+              allServices.push({
+                product_id: entry.product_id || entry.id,
+                product_name: entry.name || entry.product_name,
+                price: parseFloat(entry.price) || 0,
+                quantity: parseInt(entry.quantity) || 0,
+                total: (parseFloat(entry.price) || 0) * (parseInt(entry.quantity) || 0),
+                order_id: order.sales_order_id,
+                order_type: 'Sales Order',
+                date: order.created_at ? formatDateDDMMYYYY(order.created_at, true) : 'N/A',
+              });
+            });
+          });
+
+          // Process work orders
+          workOrders?.forEach(order => {
+            const entries = order.product_entries || [];
+            entries.forEach(entry => {
+              allServices.push({
+                product_id: entry.product_id || entry.id,
+                product_name: entry.name || entry.product_name,
+                price: parseFloat(entry.price) || 0,
+                quantity: parseInt(entry.quantity) || 0,
+                total: (parseFloat(entry.price) || 0) * (parseInt(entry.quantity) || 0),
+                order_id: order.work_order_id,
+                order_type: 'Work Order',
+                date: order.created_at ? formatDateDDMMYYYY(order.created_at, true) : 'N/A',
+              });
+            });
+          });
+
+          if (allServices.length === 0) {
+            setError('No services found for this patient.');
+            setLoading(false);
+            return;
+          }
+
+          // Group services by product name to consolidate quantities
+          const servicesByProduct = {};
+          allServices.forEach(service => {
+            const key = service.product_name;
+            if (!servicesByProduct[key]) {
+              servicesByProduct[key] = {
+                product_name: service.product_name,
+                quantity: 0,
+                total: 0,
+                details: []
+              };
+            }
+            servicesByProduct[key].quantity += service.quantity;
+            servicesByProduct[key].total += service.total;
+            servicesByProduct[key].details.push({
+              order_id: service.order_id,
+              order_type: service.order_type,
+              date: service.date,
+              quantity: service.quantity,
+              price: service.price
+            });
+          });
+
+          // Convert to array and sort by product name
+          fetchedData = Object.values(servicesByProduct).sort((a, b) =>
+            a.product_name.localeCompare(b.product_name)
+          );
+
+          // Include patient details in report
+          reportDetails = {
+            type: 'Patient Service',
+            patient: patientData,
+            mrNumber: patientMrNumber,
+            reportTypeLabel: 'Patient Service Report',
+            identifier: patientMrNumber,
+          };
+
           break;
         }
         case 'stock_report': {
@@ -1400,6 +1539,16 @@ const ReportGenerator = ({ isCollapsed }) => {
           'Updated At',
         ];
         break;
+
+      case 'service_report':
+        tableColumn = [
+          'Service Name',
+          'Quantity',
+          'Total Amount (₹)',
+          'Last Service Date',
+          'Order ID'
+        ];
+        break;
       case 'compiled_report':
         tableColumn = ['Description', 'Amount'];
         break;
@@ -1529,7 +1678,7 @@ const ReportGenerator = ({ isCollapsed }) => {
           'Status',
           'Branch',
           'Created At',
-          'Updated At',
+          'Payment Method',
         ];
         break;
 
@@ -1670,15 +1819,39 @@ const ReportGenerator = ({ isCollapsed }) => {
             : 'N/A',
         ]);
         break;
+
+      case 'service_report':
+        // Patient header info at the top
+        const patientInfo = reportDetails.patient;
+        const patientInfoText = `Patient: ${patientInfo.name || 'N/A'} | Age: ${patientInfo.age || 'N/A'} | Gender: ${patientInfo.gender || 'N/A'} | MR Number: ${reportDetails.mrNumber}`;
+        const contactInfoText = `Phone: ${patientInfo.phone_number || 'N/A'} | Address: ${patientInfo.address || 'N/A'}`;
+
+        // Add patient info to PDF
+        doc.setFontSize(10);
+        doc.text(patientInfoText, doc.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
+        doc.text(contactInfoText, doc.internal.pageSize.getWidth() / 2, 25, { align: 'center' });
+
+        // Create table rows for services
+        tableRows = data.map(item => {
+          // Get the most recent service date from details
+          const sortedDetails = [...item.details].sort((a, b) =>
+            new Date(b.date) - new Date(a.date)
+          );
+          const lastServiceDate = sortedDetails[0]?.date || 'N/A';
+          const lastOrderId = sortedDetails[0]?.order_id || 'N/A';
+
+          return [
+            item.product_name,
+            item.quantity,
+            item.total.toFixed(2),
+            lastServiceDate,
+            lastOrderId
+          ];
+        });
+        break;
+
       case 'compiled_report':
         console.log('Processing data for compiled report:', data);
-
-        // Debug the categories
-        // const opdSales = data.filter(sale =>
-        //   sale.work_order_id?.startsWith('OPW-') ||
-        //   sale.sales_order_id?.startsWith('OPS-')
-        // );
-
         const opdSales = data.filter(sale =>
           sale.work_order_id?.startsWith('OPW-')
         );
@@ -1868,7 +2041,7 @@ const ReportGenerator = ({ isCollapsed }) => {
           record.status || 'N/A',
           record.branch || 'N/A',
           record.created_at || 'N/A',
-          record.updated_at || 'N/A',
+          record.payment_method || 'N/A',
         ]);
         break;
       case 'stock_report':
@@ -1970,35 +2143,6 @@ const ReportGenerator = ({ isCollapsed }) => {
     }
 
     setReportData([tableColumn, ...tableRows]);
-
-    // Generate the main table
-    // doc.autoTable({
-    //   head: [tableColumn],
-    //   body: tableRows,
-    //   startY: 65, // Adjusted to utilize more vertical space
-    //   styles: {
-    //     fontSize: 7,
-    //     cellPadding: 2,
-    //     halign: 'center',
-    //     valign: 'middle',
-    //     overflow: 'linebreak',
-    //     cellWidth: 'wrap',
-    //   }, // Smaller font, linebreak for overflow
-    //   headStyles: {
-    //     fillColor: [0, 160, 0], // Green header
-    //     halign: 'center',
-    //     textColor: 255,
-    //     fontSize: 9,
-    //     overflow: 'linebreak',
-    //     cellWidth: 'wrap',
-    //   },
-    //   alternateRowStyles: { fillColor: [245, 245, 245] },
-    //   margin: { left: 10, right: 10 },
-    //   theme: 'striped',
-    //   showHead: 'everyPage',
-    //   pageBreak: 'auto',
-    //   columnStyles: getColumnStyles(reportType, isEmployee),
-    // });
 
     doc.autoTable({
       head: [tableColumn],
@@ -2253,7 +2397,7 @@ const ReportGenerator = ({ isCollapsed }) => {
   };
 
   const toggleReportScope = (scope) => {
-    if (isEmployee) return;
+    if (isEmployee) return; // Employees cannot change scope
     if (scope === 'combined') {
       setIsCombined(true);
     } else {
@@ -2261,8 +2405,9 @@ const ReportGenerator = ({ isCollapsed }) => {
     }
   };
 
+  // Update the toggleBranch function to prevent employees from selecting other branches
   const toggleBranch = (branchCode) => {
-    if (isEmployee) return;
+    if (isEmployee) return; // Employees cannot change branches
     if (selectedBranches.includes(branchCode)) {
       setSelectedBranches(selectedBranches.filter(code => code !== branchCode));
     } else {
@@ -2279,6 +2424,7 @@ const ReportGenerator = ({ isCollapsed }) => {
     { value: 'compiled_report', label: 'Compiled Report' },
     { value: 'insurance_claims', label: 'Insurance Claims' },
     { value: 'product_sales', label: 'Product Sales' },
+    { value: 'service_report', label: 'Patient Service Report' },
   ] : [
     { value: 'sales_orders', label: 'Sales Orders' },
     { value: 'work_orders', label: 'Work Orders' },
@@ -2286,8 +2432,7 @@ const ReportGenerator = ({ isCollapsed }) => {
     { value: 'compiled_report', label: 'Compiled Report' },
     { value: 'insurance_claims', label: 'Insurance Claims' },
     { value: 'product_sales', label: 'Product Sales' },
-
-
+    { value: 'service_report', label: 'Patient Service Report' },
   ];
 
   useEffect(() => {
@@ -2431,6 +2576,26 @@ const ReportGenerator = ({ isCollapsed }) => {
               {!isEmployee && selectedBranches.length === 0 && (
                 <p className="text-sm text-red-500 mt-1">Please select at least one branch.</p>
               )}
+            </div>
+          )}
+
+          {reportType === 'service_report' && (
+            <div className="mt-6">
+              <label htmlFor="patientMrNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                Patient MR Number
+              </label>
+              <input
+                type="text"
+                id="patientMrNumber"
+                ref={patientMrNumberRef}
+                value={patientMrNumber}
+                onChange={(e) => setPatientMrNumber(e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, generateButtonRef)}
+                className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                placeholder="Enter patient MR number"
+                required
+                aria-required="true"
+              />
             </div>
           )}
 

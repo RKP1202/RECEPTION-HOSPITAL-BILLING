@@ -706,148 +706,6 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
         }
     };
 
-
-
-    // const generateSalesOrderId = async (branch) => {
-    //     // Define default starting sales_order_id for each branch
-    //     const branchDefaultIds = {
-    //         TVR: 4103, // Default ID for Trivandrum
-    //         NTA: 2570, // Default ID for Neyyantinkara
-    //         KOT1: 3001, // Default ID for Kottarakara 1
-    //         KOT2: 4001, // Default ID for Kottarakara 2
-    //         KAT: 2792, // Default ID for Kattakada
-    //     };
-
-    //     if (!branch) {
-    //         console.error("Branch is undefined. Cannot generate Sales Order ID.");
-    //         return;
-    //     }
-
-    //     try {
-    //         // console.log("Branch passed:", branch); // Debugging: check the branch passed
-    //         console.log(
-    //             "Default Sales Order ID for this branch:",
-    //             branchDefaultIds[branch]
-    //         ); // Debugging: check the default ID for the branch
-
-
-
-
-    //         // Fetch the maximum sales_order_id for the specific branch
-    //         const { data, error } = await supabase
-    //             .from("sales_orders")
-    //             .select("sales_order_id")
-    //             .eq("branch", branch) // Filter by branch
-    //             .order("sales_order_id", { ascending: false })
-    //             .limit(1);
-
-    //         console.log("Data:", data); // Debugging: check the data
-
-    //         if (error) {
-    //             console.error(
-    //                 `Error fetching last sales_order_id for branch ${branch}:`,
-    //                 error
-    //             );
-    //             return null;
-    //         }
-
-    //         // Set the default starting sales_order_id for the branch if no orders exist
-
-    //         let lastSalesOrderId = branchDefaultIds[branch] || 1000; // Default to 1000 if branch not found in the map
-
-    //         // If data exists, extract the last sales_order_id for that branch
-    //         if (data && data.length > 0) {
-    //             setSelectedWorkOrder: data[0];
-    //             const str = data[0].sales_order_id
-    //             const match = str.match(/(\d+)$/); //Regex to match digits at the end of the string
-
-    //             if (match) {
-    //                 console.log('Regex', match[0]); // Output: 3742
-    //                 lastSalesOrderId = parseInt(match[0]);
-    //             } else {
-    //                 console.log("No number found");
-    //             }
-
-    //         }
-
-    //         console.log("Calculated lastSalesOrderId:", lastSalesOrderId); // Debugging: check lastSalesOrderId
-
-    //         // Increment the last sales_order_id by 1
-    //         let newSalesOrderId = lastSalesOrderId + 1;
-    //         console.log("Calculated newSalesOrderId:", newSalesOrderId); // Debugging: check newSalesOrderId
-
-    //         // newSalesOrderId = `OPS-${opNumber}-${String(newSalesOrderId + 1).padStart(3, "0")}`;
-
-    //         // console.log(selectedWorkOrder.work_order_id);
-
-    //         // Extract OP Number from selected work order
-    //         let opNumber = "01"; // Default OP Number
-    //         if (selectedWorkOrder && selectedWorkOrder.work_order_id) {
-    //             // console.log(selectedWorkOrder.work_order_id);
-
-
-    //             // Assuming work_order_id format is "OPW-XX-XXX" where XX is the OP number
-    //             let match = selectedWorkOrder.work_order_id.match(/CR-(\d+)-/);
-    //             if (!match) {
-    //                 match = selectedWorkOrder.work_order_id.match(/OPW-(\d+)-/);
-    //             }
-    //             if (match && match[1]) {
-    //                 opNumber = match[1];
-    //                 console.log("Extracted OP Number:", opNumber);
-    //             }
-    //             else {
-    //                 console.log("No OP Number found");
-    //             }
-
-    //             const workOrderId = selectedWorkOrder.work_order_id;
-
-    //             // Regex to match "OPW" or "CR" at the start of the string
-    //             const opwRegex = /^OPW/;
-    //             const crRegex = /^CR/;
-
-    //             if (opwRegex.test(workOrderId)) {
-    //                 console.log("1");
-    //                 // Logic specific to OPW work orders
-    //                 newSalesOrderId = `OPS-${opNumber}-${String(newSalesOrderId).padStart(3, "0")}`;
-    //                 console.log("Handling OPW work order:", workOrderId);
-    //                 // Additional actions for OPW
-    //             } else if (crRegex.test(workOrderId)) {
-    //                 console.log("2");
-    //                 // Logic specific to CR work orders
-    //                 newSalesOrderId = `CRS-${opNumber}-${String(newSalesOrderId).padStart(3, "0")}`;
-    //                 console.log("Handling CR work order:", workOrderId);
-    //                 // Additional actions for CR
-    //             } else {
-    //                 console.log("Unknown work order type:", workOrderId);
-    //                 // Handle unexpected work order types
-    //             }
-    //         }
-
-
-
-    //         // console.log();
-
-
-
-
-    //         // Optionally, you can update the sales order form with the new ID
-    //         updateSalesOrderForm({ salesOrderId: newSalesOrderId });
-
-    //         return newSalesOrderId.toString();
-    //     } catch (error) {
-    //         console.error(
-    //             `Error generating sales_order_id for branch ${branch}:`,
-    //             error
-    //         );
-    //         return null;
-    //     }
-    // };
-
-
-
-
-    // Add this useEffect to watch for selectedWorkOrder changes
-
     const generateSalesOrderId = async (branch) => {
         try {
             console.log("Generating unique sales order ID...");
@@ -1823,7 +1681,6 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
                 }
             }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location]);
 
     useEffect(() => {
@@ -1835,6 +1692,36 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [step, salesOrderForm.privilegeCard, salesOrderForm.redeemOption]);
 
+    const [lastBilledOrder, setLastBilledOrder] = useState(null);
+    const [isLoadingLastOrder, setIsLoadingLastOrder] = useState(false);
+
+    const fetchLastBilledOrder = async () => {
+        setIsLoadingLastOrder(true);
+        try {
+            const { data, error } = await supabase
+                .from('sales_orders')
+                .select('sales_order_id, mr_number, created_at')
+                .eq('branch', branch)
+                .like('sales_order_id', 'CNS-%') // Filter for consulting orders
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (error) throw error;
+            if (data && data.length > 0) {
+                setLastBilledOrder(data[0]);
+            }
+        } catch (err) {
+            console.error('Error fetching last consulting order:', err);
+        } finally {
+            setIsLoadingLastOrder(false);
+        }
+    };
+
+    useEffect(() => {
+        if (branch) {
+            fetchLastBilledOrder();
+        }
+    }, [branch]);
     const handleEnterKey = (e, nextFieldRef, prevFieldRef) => {
         if (e.key === "Enter") {
             if (e.shiftKey) {
@@ -1937,8 +1824,8 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
                 }
                 if (!address.trim()) errors.address = "Address is required.";
                 if (!age) errors.customerAge = "Age is required.";
-                if (age && parseInt(age) < 0)
-                    errors.customerAge = "Age cannot be negative.";
+                if (age && parseInt(age) <= 0)
+                    errors.customerAge = "Age must be a positive number.";
                 if (!gender) errors.customerGender = "Gender is required.";
             }
         }// else if (step === 3 && privilegeCard) {
@@ -2829,6 +2716,7 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
 
             // If everything is successful
             alert("Sales order saved successfully!");
+            fetchLastBilledOrder();
             dispatch({
                 type: "SET_SALES_ORDER_FORM",
                 payload: {
@@ -3516,6 +3404,34 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
                     )}
 
                     {/* Step 3: Patient or Customer Details */}
+                    {/* Last Billed Order Information */}
+                    {step === 0 && lastBilledOrder && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-6 flex justify-between items-center">
+                            <div>
+                                <h3 className="font-medium text-blue-800">Last Consultation Billed</h3>
+                                <p className="text-sm">
+                                    <span className="font-semibold">Order ID:</span> {lastBilledOrder.sales_order_id}
+                                </p>
+                                <p className="text-sm">
+                                    <span className="font-semibold">MR Number:</span> {lastBilledOrder.mr_number || 'N/A'}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                    {lastBilledOrder.created_at
+                                        ? new Date(lastBilledOrder.created_at).toLocaleString()
+                                        : 'N/A'
+                                    }
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={fetchLastBilledOrder}
+                                className="text-blue-600 hover:text-blue-800"
+                                disabled={isLoadingLastOrder}
+                            >
+                                {isLoadingLastOrder ? 'Refreshing...' : 'Refresh'}
+                            </button>
+                        </div>
+                    )}
                     {state.salesOrderForm.step === 0 && (
                         <div className="bg-gray-50 p-6 rounded-md shadow-inner space-y-4">
                             <h2 className="text-lg font-semibold text-gray-700">
@@ -4468,28 +4384,6 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
                                     {/* Financial Summary */}
                                     <div className="flex justify-between mb-6 space-x-8">
                                         <div>
-                                            {/* Subtotal Including GST */}
-
-                                            {/* Work Order and Sales Discounts */}
-                                            {/* <p>
-                          Work Order Discount:
-                          <strong>
-                            {" "}
-                            ₹{parseFloat(workOrderDiscount).toFixed(2)}
-                          </strong>
-                        </p>
-                        <p>
-                          Sales Discount:
-                          <strong> ₹{parseFloat(discount || 0).toFixed(2)}</strong>
-                        </p>
-                        <p>
-                          Total Discount:
-                          <strong>
-                            {" "}
-                            ₹{parseFloat(totalDiscount).toFixed(2)}
-                          </strong>
-                        </p> */}
-
                                             {/* Amount After Discounts */}
                                             <p>
                                                 Advance Paid:
@@ -4513,36 +4407,11 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
                                         </div>
 
                                         <div>
-                                            {/* <p className="text-lg">
-                          <strong>
-                            Amount After Discounts: ₹
-                            {parseFloat(subtotalWithGST).toFixed(2)}
-                          </strong>
-                        </p> */}
                                             {/* Taxable Value and GST Breakdown */}
                                             <p>
                                                 Amt. after discount:
                                                 <strong> ₹{parseFloat(taxableValue).toFixed(2)}</strong>
                                             </p>
-                                            {/* <p>
-                          CGST (6%):
-                          <strong> ₹{parseFloat(cgstAmount).toFixed(2)}</strong>
-                        </p>
-                        <p>
-                          SGST (6%):
-                          <strong> ₹{parseFloat(sgstAmount).toFixed(2)}</strong>
-                        </p> */}
-                                            {/* Advance Paid */}
-
-                                            {/* Final Amount Due */}
-
-                                            {/* <p className="text-xl">
-                          <strong>
-                            Total Paid (Incl. GST): ₹
-                            {parseFloat(amountAfterDiscount).toFixed(2)}
-                          </strong>
-                        </p> */}
-
                                             {/* Billed By */}
                                             <div className="mt-4">
                                                 <div className="mt-10 space-x-8">
@@ -4642,7 +4511,7 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
                             </div>
 
                             {/* Action Buttons Outside Printable Area */}
-                            <div className="flex justify-center text-center space-x-4 mt-6">
+                            <div className="flex justify-center text-center space-x-4 mt-6 print:hidden">
                                 {!submitted && (
                                     <button
                                         type="button"

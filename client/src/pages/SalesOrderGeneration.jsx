@@ -553,6 +553,58 @@ const SalesOrderGeneration = memo(({ isCollapsed, onModificationSuccess }) => {
     }
   }, []);
 
+  const [lastBilledOrder, setLastBilledOrder] = useState(null);
+  const [isLoadingLastOrder, setIsLoadingLastOrder] = useState(false);
+
+  // const fetchLastBilledOrder = async () => {
+  //   setIsLoadingLastOrder(true);
+  //   try {
+  //     const { data, error } = await supabase
+  //       .from('sales_orders')
+  //       .select('sales_order_id, mr_number, created_at')
+  //       .eq('branch', branch)
+  //       .order('created_at', { ascending: false })
+  //       .limit(1);
+
+  //     if (error) throw error;
+  //     if (data && data.length > 0) {
+  //       setLastBilledOrder(data[0]);
+  //     }
+  //   } catch (err) {
+  //     console.error('Error fetching last billed order:', err);
+  //   } finally {
+  //     setIsLoadingLastOrder(false);
+  //   }
+  // };
+
+  const fetchLastBilledOrder = async () => {
+    setIsLoadingLastOrder(true);
+    try {
+      const { data, error } = await supabase
+        .from('sales_orders')
+        .select('sales_order_id, mr_number, created_at')
+        .eq('branch', branch)
+        .not('sales_order_id', 'like', 'CNS-%') // Exclude consulting orders
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      if (data && data.length > 0) {
+        setLastBilledOrder(data[0]);
+      }
+    } catch (err) {
+      console.error('Error fetching last billed order:', err);
+    } finally {
+      setIsLoadingLastOrder(false);
+    }
+  };
+
+  useEffect(() => {
+    if (branch) {
+      fetchLastBilledOrder();
+    }
+  }, [branch]);
+
 
   // Refs for input fields to control focus
   const workOrderInputRef = useRef(null);
@@ -2181,6 +2233,8 @@ const SalesOrderGeneration = memo(({ isCollapsed, onModificationSuccess }) => {
           showSuccessMessage: true // Add a success flag instead of using alert
         });
 
+        fetchLastBilledOrder();
+
 
       }
     } catch (err) {
@@ -2316,6 +2370,33 @@ const SalesOrderGeneration = memo(({ isCollapsed, onModificationSuccess }) => {
           onSubmit={(e) => e.preventDefault()}
         >
           {/* Step 1: Fetch Work Orders */}
+          {step === 0 && lastBilledOrder && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-6 flex justify-between items-center">
+              <div>
+                <h3 className="font-medium text-blue-800">Last Billed Order</h3>
+                <p className="text-sm">
+                  <span className="font-semibold">Order ID:</span> {lastBilledOrder.sales_order_id}
+                </p>
+                <p className="text-sm">
+                  <span className="font-semibold">MR Number:</span> {lastBilledOrder.mr_number || 'N/A'}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {lastBilledOrder.created_at
+                    ? new Date(lastBilledOrder.created_at).toLocaleString()
+                    : 'N/A'
+                  }
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fetchLastBilledOrder}
+                className="text-blue-600 hover:text-blue-800"
+                disabled={isLoadingLastOrder}
+              >
+                {isLoadingLastOrder ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+          )}
           {state.salesOrderForm.step === 0 && (
             <div className="bg-gray-50 p-6 rounded-md shadow-inner space-y-4">
               <h2 className="text-lg font-semibold text-gray-700">
@@ -3108,7 +3189,7 @@ const SalesOrderGeneration = memo(({ isCollapsed, onModificationSuccess }) => {
                     }}
                     ref={ageRef}
                     className="border border-gray-300 w-full px-4 py-3 rounded-lg"
-                    min="0"
+                    min="1"
                   />
 
                   {validationErrors.age && (
@@ -3735,7 +3816,7 @@ const SalesOrderGeneration = memo(({ isCollapsed, onModificationSuccess }) => {
                         </select>
                       )}
                       {/* Checkbox to switch between dropdown and manual input */}
-                      <div>
+                      <div className="print:hidden">
                         <label>
                           <input
                             type="checkbox"
