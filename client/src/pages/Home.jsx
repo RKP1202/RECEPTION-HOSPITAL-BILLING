@@ -1106,7 +1106,7 @@ if (productIds.length > 0) {
                   onClick={() => navigate('/employee-stock-management')}
                 >
                   <ArchiveBoxArrowDownIcon className='h-36 w-36 text-green-500' />
-                  <h2 className="text-xl text-gray-800 mt-4">Purchase Section</h2>
+                  <h2 className="text-xl text-gray-800 mt-4">Add Service Section</h2>
                 </div>
 
                 {/* Credit and Debit Notes */}

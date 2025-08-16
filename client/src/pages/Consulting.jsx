@@ -4573,7 +4573,7 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
                                     ? "opacity-50 cursor-not-allowed"
                                     : ""
                                     }`}
-                                disabled={step === 3 && !salesOrderForm.isPinVerified}
+                                disabled={step === 2 && !salesOrderForm.isPinVerified}
                             >
                                 Next
                             </button>

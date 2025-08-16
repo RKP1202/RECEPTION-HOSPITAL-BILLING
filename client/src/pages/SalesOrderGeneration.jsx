@@ -556,27 +556,6 @@ const SalesOrderGeneration = memo(({ isCollapsed, onModificationSuccess }) => {
   const [lastBilledOrder, setLastBilledOrder] = useState(null);
   const [isLoadingLastOrder, setIsLoadingLastOrder] = useState(false);
 
-  // const fetchLastBilledOrder = async () => {
-  //   setIsLoadingLastOrder(true);
-  //   try {
-  //     const { data, error } = await supabase
-  //       .from('sales_orders')
-  //       .select('sales_order_id, mr_number, created_at')
-  //       .eq('branch', branch)
-  //       .order('created_at', { ascending: false })
-  //       .limit(1);
-
-  //     if (error) throw error;
-  //     if (data && data.length > 0) {
-  //       setLastBilledOrder(data[0]);
-  //     }
-  //   } catch (err) {
-  //     console.error('Error fetching last billed order:', err);
-  //   } finally {
-  //     setIsLoadingLastOrder(false);
-  //   }
-  // };
-
   const fetchLastBilledOrder = async () => {
     setIsLoadingLastOrder(true);
     try {
