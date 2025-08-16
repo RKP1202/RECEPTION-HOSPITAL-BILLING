@@ -1162,7 +1162,131 @@ const ReportGenerator = ({ isCollapsed }) => {
         }
 
 
-        // Add this case in the switch statement of handleGenerateReport
+        // case 'service_report': {
+        //   if (!patientMrNumber.trim()) {
+        //     setError('Please enter a valid MR number.');
+        //     setLoading(false);
+        //     return;
+        //   }
+
+        //   // First, get the patient details
+        //   const { data: patientData, error: patientError } = await supabase
+        //     .from('patients')
+        //     .select('name, age, gender, phone_number, address')
+        //     .eq('mr_number', patientMrNumber.trim())
+        //     .single();
+
+        //   if (patientError) {
+        //     setError('No patient found with the provided MR number.');
+        //     setLoading(false);
+        //     return;
+        //   }
+
+        //   // Fetch sales orders for this patient
+        //   const { data: salesOrders, error: salesError } = await supabase
+        //     .from('sales_orders')
+        //     .select('*')
+        //     .eq('mr_number', patientMrNumber.trim());
+
+        //   if (salesError) {
+        //     console.error('Error fetching sales orders:', salesError);
+        //   }
+
+        //   // Fetch work orders for this patient
+        //   const { data: workOrders, error: workError } = await supabase
+        //     .from('work_orders')
+        //     .select('*')
+        //     .eq('mr_number', patientMrNumber.trim());
+
+        //   if (workError) {
+        //     console.error('Error fetching work orders:', workError);
+        //   }
+
+        //   // Combine and process the data
+        //   const allServices = [];
+
+        //   // Process sales orders
+        //   salesOrders?.forEach(order => {
+        //     const entries = order.product_entries || [];
+        //     entries.forEach(entry => {
+        //       allServices.push({
+        //         product_id: entry.product_id || entry.id,
+        //         product_name: entry.name || entry.product_name,
+        //         price: parseFloat(entry.price) || 0,
+        //         quantity: parseInt(entry.quantity) || 0,
+        //         total: (parseFloat(entry.price) || 0) * (parseInt(entry.quantity) || 0),
+        //         order_id: order.sales_order_id,
+        //         order_type: 'Sales Order',
+        //         date: order.created_at ? formatDateDDMMYYYY(order.created_at, true) : 'N/A',
+        //       });
+        //     });
+        //   });
+
+        //   // Process work orders
+        //   workOrders?.forEach(order => {
+        //     const entries = order.product_entries || [];
+        //     entries.forEach(entry => {
+        //       allServices.push({
+        //         product_id: entry.product_id || entry.id,
+        //         product_name: entry.name || entry.product_name,
+        //         price: parseFloat(entry.price) || 0,
+        //         quantity: parseInt(entry.quantity) || 0,
+        //         total: (parseFloat(entry.price) || 0) * (parseInt(entry.quantity) || 0),
+        //         order_id: order.work_order_id,
+        //         order_type: 'Work Order',
+        //         date: order.created_at ? formatDateDDMMYYYY(order.created_at, true) : 'N/A',
+        //       });
+        //     });
+        //   });
+
+        //   if (allServices.length === 0) {
+        //     setError('No services found for this patient.');
+        //     setLoading(false);
+        //     return;
+        //   }
+
+        //   // Group services by product name to consolidate quantities
+        //   const servicesByProduct = {};
+        //   allServices.forEach(service => {
+        //     const key = service.product_name;
+        //     if (!servicesByProduct[key]) {
+        //       servicesByProduct[key] = {
+        //         product_name: service.product_name,
+        //         quantity: 0,
+        //         total: 0,
+        //         details: []
+        //       };
+        //     }
+        //     servicesByProduct[key].quantity += service.quantity;
+        //     servicesByProduct[key].total += service.total;
+        //     servicesByProduct[key].details.push({
+        //       order_id: service.order_id,
+        //       order_type: service.order_type,
+        //       date: service.date,
+        //       quantity: service.quantity,
+        //       price: service.price
+        //     });
+        //   });
+
+        //   // Convert to array and sort by product name
+        //   fetchedData = Object.values(servicesByProduct).sort((a, b) =>
+        //     a.product_name.localeCompare(b.product_name)
+        //   );
+
+        //   // Include patient details in report
+        //   reportDetails = {
+        //     type: 'Patient Service',
+        //     patient: patientData,
+        //     mrNumber: patientMrNumber,
+        //     reportTypeLabel: 'Patient Service Report',
+        //     identifier: patientMrNumber,
+        //   };
+
+        //   break;
+        // }
+
+
+        // Update the service_report case in handleGenerateReport function
         case 'service_report': {
           if (!patientMrNumber.trim()) {
             setError('Please enter a valid MR number.');
@@ -1210,9 +1334,23 @@ const ReportGenerator = ({ isCollapsed }) => {
           salesOrders?.forEach(order => {
             const entries = order.product_entries || [];
             entries.forEach(entry => {
+              // Get the proper service name - check if it's a consulting service first
+              let serviceName = entry.name || entry.product_name || 'Unknown Service';
+              const productId = entry.product_id || entry.id;
+
+              // Special case: If product_id matches consulting services, use the consulting service name
+              if (CONSULTING_SERVICES[productId]) {
+                serviceName = CONSULTING_SERVICES[productId];
+              }
+
+              // Ensure serviceName is never undefined or null
+              if (!serviceName || serviceName.trim() === '') {
+                serviceName = 'Unknown Service';
+              }
+
               allServices.push({
-                product_id: entry.product_id || entry.id,
-                product_name: entry.name || entry.product_name,
+                product_id: productId,
+                product_name: serviceName,
                 price: parseFloat(entry.price) || 0,
                 quantity: parseInt(entry.quantity) || 0,
                 total: (parseFloat(entry.price) || 0) * (parseInt(entry.quantity) || 0),
@@ -1227,9 +1365,23 @@ const ReportGenerator = ({ isCollapsed }) => {
           workOrders?.forEach(order => {
             const entries = order.product_entries || [];
             entries.forEach(entry => {
+              // Get the proper service name - check if it's a consulting service first
+              let serviceName = entry.name || entry.product_name || 'Unknown Service';
+              const productId = entry.product_id || entry.id;
+
+              // Special case: If product_id matches consulting services, use the consulting service name
+              if (CONSULTING_SERVICES[productId]) {
+                serviceName = CONSULTING_SERVICES[productId];
+              }
+
+              // Ensure serviceName is never undefined or null
+              if (!serviceName || serviceName.trim() === '') {
+                serviceName = 'Unknown Service';
+              }
+
               allServices.push({
-                product_id: entry.product_id || entry.id,
-                product_name: entry.name || entry.product_name,
+                product_id: productId,
+                product_name: serviceName,
                 price: parseFloat(entry.price) || 0,
                 quantity: parseInt(entry.quantity) || 0,
                 total: (parseFloat(entry.price) || 0) * (parseInt(entry.quantity) || 0),
@@ -1249,10 +1401,10 @@ const ReportGenerator = ({ isCollapsed }) => {
           // Group services by product name to consolidate quantities
           const servicesByProduct = {};
           allServices.forEach(service => {
-            const key = service.product_name;
+            const key = service.product_name || 'Unknown Service'; // Ensure key is never undefined
             if (!servicesByProduct[key]) {
               servicesByProduct[key] = {
-                product_name: service.product_name,
+                product_name: service.product_name || 'Unknown Service',
                 quantity: 0,
                 total: 0,
                 details: []
@@ -1269,10 +1421,14 @@ const ReportGenerator = ({ isCollapsed }) => {
             });
           });
 
-          // Convert to array and sort by product name
-          fetchedData = Object.values(servicesByProduct).sort((a, b) =>
-            a.product_name.localeCompare(b.product_name)
-          );
+          // Convert to array and sort by product name with null safety
+          fetchedData = Object.values(servicesByProduct)
+            .filter(item => item.product_name) // Filter out any items without product_name
+            .sort((a, b) => {
+              const nameA = a.product_name || 'Unknown Service';
+              const nameB = b.product_name || 'Unknown Service';
+              return nameA.localeCompare(nameB);
+            });
 
           // Include patient details in report
           reportDetails = {
@@ -1656,18 +1812,7 @@ const ReportGenerator = ({ isCollapsed }) => {
         ];
         break;
       case 'consolidated':
-        tableColumn = isEmployee ? [
-          'Sales Order ID',
-          'Work Order ID',
-          'MR Number',
-          'Patient/Customer Name',
-          'Total Amount',
-          'Discount',
-          'Total Collected',
-          'Status',
-          'Branch',
-          'Created At',
-        ] : [
+        tableColumn = [
           'Sales Order ID',
           'Work Order ID',
           'MR Number',
@@ -2019,18 +2164,7 @@ const ReportGenerator = ({ isCollapsed }) => {
         ]);
         break;
       case 'consolidated':
-        tableRows = isEmployee ? data.map((record) => [
-          record.sales_order_id || 'N/A',
-          record.work_order_id || 'N/A',
-          record.mr_number || 'N/A',
-          record.patient_customer_name || 'N/A',
-          record.total_amount ? Number(record.total_amount).toFixed(2) : '0.00',
-          record.discount ? Number(record.discount).toFixed(2) : '0.00',
-          record.total_collected ? Number(record.total_collected).toFixed(2) : '0.00',
-          record.status || 'N/A',
-          record.branch || 'N/A',
-          record.created_at || 'N/A',
-        ]) : data.map((record) => [
+        tableRows =  data.map((record) => [
           record.sales_order_id || 'N/A',
           record.work_order_id || 'N/A',
           record.mr_number || 'N/A',
@@ -2425,6 +2559,7 @@ const ReportGenerator = ({ isCollapsed }) => {
     { value: 'insurance_claims', label: 'Insurance Claims' },
     { value: 'product_sales', label: 'Product Sales' },
     { value: 'service_report', label: 'Patient Service Report' },
+    { value: 'sales_orders', label: 'Sales Orders' },
   ] : [
     { value: 'sales_orders', label: 'Sales Orders' },
     { value: 'work_orders', label: 'Work Orders' },
