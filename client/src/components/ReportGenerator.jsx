@@ -1161,132 +1161,6 @@ const ReportGenerator = ({ isCollapsed }) => {
           break;
         }
 
-
-        // case 'service_report': {
-        //   if (!patientMrNumber.trim()) {
-        //     setError('Please enter a valid MR number.');
-        //     setLoading(false);
-        //     return;
-        //   }
-
-        //   // First, get the patient details
-        //   const { data: patientData, error: patientError } = await supabase
-        //     .from('patients')
-        //     .select('name, age, gender, phone_number, address')
-        //     .eq('mr_number', patientMrNumber.trim())
-        //     .single();
-
-        //   if (patientError) {
-        //     setError('No patient found with the provided MR number.');
-        //     setLoading(false);
-        //     return;
-        //   }
-
-        //   // Fetch sales orders for this patient
-        //   const { data: salesOrders, error: salesError } = await supabase
-        //     .from('sales_orders')
-        //     .select('*')
-        //     .eq('mr_number', patientMrNumber.trim());
-
-        //   if (salesError) {
-        //     console.error('Error fetching sales orders:', salesError);
-        //   }
-
-        //   // Fetch work orders for this patient
-        //   const { data: workOrders, error: workError } = await supabase
-        //     .from('work_orders')
-        //     .select('*')
-        //     .eq('mr_number', patientMrNumber.trim());
-
-        //   if (workError) {
-        //     console.error('Error fetching work orders:', workError);
-        //   }
-
-        //   // Combine and process the data
-        //   const allServices = [];
-
-        //   // Process sales orders
-        //   salesOrders?.forEach(order => {
-        //     const entries = order.product_entries || [];
-        //     entries.forEach(entry => {
-        //       allServices.push({
-        //         product_id: entry.product_id || entry.id,
-        //         product_name: entry.name || entry.product_name,
-        //         price: parseFloat(entry.price) || 0,
-        //         quantity: parseInt(entry.quantity) || 0,
-        //         total: (parseFloat(entry.price) || 0) * (parseInt(entry.quantity) || 0),
-        //         order_id: order.sales_order_id,
-        //         order_type: 'Sales Order',
-        //         date: order.created_at ? formatDateDDMMYYYY(order.created_at, true) : 'N/A',
-        //       });
-        //     });
-        //   });
-
-        //   // Process work orders
-        //   workOrders?.forEach(order => {
-        //     const entries = order.product_entries || [];
-        //     entries.forEach(entry => {
-        //       allServices.push({
-        //         product_id: entry.product_id || entry.id,
-        //         product_name: entry.name || entry.product_name,
-        //         price: parseFloat(entry.price) || 0,
-        //         quantity: parseInt(entry.quantity) || 0,
-        //         total: (parseFloat(entry.price) || 0) * (parseInt(entry.quantity) || 0),
-        //         order_id: order.work_order_id,
-        //         order_type: 'Work Order',
-        //         date: order.created_at ? formatDateDDMMYYYY(order.created_at, true) : 'N/A',
-        //       });
-        //     });
-        //   });
-
-        //   if (allServices.length === 0) {
-        //     setError('No services found for this patient.');
-        //     setLoading(false);
-        //     return;
-        //   }
-
-        //   // Group services by product name to consolidate quantities
-        //   const servicesByProduct = {};
-        //   allServices.forEach(service => {
-        //     const key = service.product_name;
-        //     if (!servicesByProduct[key]) {
-        //       servicesByProduct[key] = {
-        //         product_name: service.product_name,
-        //         quantity: 0,
-        //         total: 0,
-        //         details: []
-        //       };
-        //     }
-        //     servicesByProduct[key].quantity += service.quantity;
-        //     servicesByProduct[key].total += service.total;
-        //     servicesByProduct[key].details.push({
-        //       order_id: service.order_id,
-        //       order_type: service.order_type,
-        //       date: service.date,
-        //       quantity: service.quantity,
-        //       price: service.price
-        //     });
-        //   });
-
-        //   // Convert to array and sort by product name
-        //   fetchedData = Object.values(servicesByProduct).sort((a, b) =>
-        //     a.product_name.localeCompare(b.product_name)
-        //   );
-
-        //   // Include patient details in report
-        //   reportDetails = {
-        //     type: 'Patient Service',
-        //     patient: patientData,
-        //     mrNumber: patientMrNumber,
-        //     reportTypeLabel: 'Patient Service Report',
-        //     identifier: patientMrNumber,
-        //   };
-
-        //   break;
-        // }
-
-
-        // Update the service_report case in handleGenerateReport function
         case 'service_report': {
           if (!patientMrNumber.trim()) {
             setError('Please enter a valid MR number.');
@@ -2164,7 +2038,7 @@ const ReportGenerator = ({ isCollapsed }) => {
         ]);
         break;
       case 'consolidated':
-        tableRows =  data.map((record) => [
+        tableRows = data.map((record) => [
           record.sales_order_id || 'N/A',
           record.work_order_id || 'N/A',
           record.mr_number || 'N/A',
@@ -2487,9 +2361,57 @@ const ReportGenerator = ({ isCollapsed }) => {
         ];
         break;
       }
+      case 'service_report': {
+        // Calculate summary metrics for the service report
+        const totalServices = data.length;
+        const totalQuantity = data.reduce((acc, curr) => acc + (curr.quantity || 0), 0);
+        const totalAmount = data.reduce((acc, curr) => acc + (curr.total || 0), 0);
+        
+        // Get the most frequently used service
+        let serviceCounts = {};
+        data.forEach(service => {
+          const name = service.product_name || 'Unknown Service';
+          serviceCounts[name] = (serviceCounts[name] || 0) + service.quantity;
+        });
+        
+        let mostFrequentService = '';
+        let maxCount = 0;
+        for (const [service, count] of Object.entries(serviceCounts)) {
+          if (count > maxCount) {
+            mostFrequentService = service;
+            maxCount = count;
+          }
+        }
+        
+        // Get service with highest cost
+        let highestCostService = '';
+        let highestCost = 0;
+        data.forEach(service => {
+          if (service.total > highestCost) {
+            highestCost = service.total;
+            highestCostService = service.product_name || 'Unknown Service';
+          }
+        });
+        
+        // Calculate average cost per service
+        const avgCostPerService = totalServices > 0 ? totalAmount / totalServices : 0;
+        
+        // Create the main summary table for service report
+        summaryTable = [
+          ['Total Unique Services', totalServices],
+          ['Total Quantity', totalQuantity],
+          ['Total Amount', `₹${totalAmount.toFixed(2)}`],
+          ['Most Frequent Service', `${mostFrequentService} (${maxCount} times)`],
+          ['Highest Cost Service', `${highestCostService} (₹${highestCost.toFixed(2)})`],
+          ['Average Cost Per Service Type', `₹${avgCostPerService.toFixed(2)}`],
+        ];
+        break;
+      }
     }
 
     // Generate the summary table
+    
+    // Generate the main summary table
     doc.autoTable({
       startY: summaryStartY + 5,
       head: [['Metric', 'Value']],
@@ -2510,7 +2432,7 @@ const ReportGenerator = ({ isCollapsed }) => {
         1: { halign: 'center', cellWidth: 40 },
       },
     });
-
+    
     // Add Footer with page numbers
     addFooter(doc);
 
