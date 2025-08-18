@@ -1161,6 +1161,189 @@ const ReportGenerator = ({ isCollapsed }) => {
           break;
         }
 
+        // case 'service_report': {
+        //   if (!patientMrNumber.trim()) {
+        //     setError('Please enter a valid MR number.');
+        //     setLoading(false);
+        //     return;
+        //   }
+
+        //   // First, get the patient details
+        //   const { data: patientData, error: patientError } = await supabase
+        //     .from('patients')
+        //     .select('name, age, gender, phone_number, address')
+        //     .eq('mr_number', patientMrNumber.trim())
+        //     .single();
+
+        //   if (patientError) {
+        //     setError('No patient found with the provided MR number.');
+        //     setLoading(false);
+        //     return;
+        //   }
+
+        //   // Fetch sales orders for this patient
+        //   const { data: salesOrders, error: salesError } = await supabase
+        //     .from('sales_orders')
+        //     .select('*')
+        //     .eq('mr_number', patientMrNumber.trim());
+
+        //   if (salesError) {
+        //     console.error('Error fetching sales orders:', salesError);
+        //   }
+
+        //   // Fetch work orders for this patient
+        //   const { data: workOrders, error: workError } = await supabase
+        //     .from('work_orders')
+        //     .select('*')
+        //     .eq('mr_number', patientMrNumber.trim());
+
+        //   if (workError) {
+        //     console.error('Error fetching work orders:', workError);
+        //   }
+
+        //   // Process orders and collect all product IDs that need to be looked up
+        //   const productIdsToLookup = new Set();
+        //   const allServices = [];
+
+        //   // Process sales orders to collect product IDs
+        //   salesOrders?.forEach(order => {
+        //     const entries = order.product_entries || [];
+        //     entries.forEach(entry => {
+        //       const productId = entry.product_id || entry.id;
+
+        //       // Only add numeric product IDs to lookup set
+        //       if (productId && !CONSULTING_SERVICES[productId] && !isNaN(Number(productId))) {
+        //         productIdsToLookup.add(Number(productId));
+        //       }
+
+        //       allServices.push({
+        //         product_id: productId,
+        //         order_id: order.sales_order_id,
+        //         order_type: 'Sales Order',
+        //         price: parseFloat(entry.price) || 0,
+        //         quantity: parseInt(entry.quantity) || 0,
+        //         total: (parseFloat(entry.price) || 0) * (parseInt(entry.quantity) || 0),
+        //         date: order.created_at ? formatDateDDMMYYYY(order.created_at, true) : 'N/A',
+        //         // Use a temporary name that will be replaced after lookup
+        //         product_name: entry.name || entry.product_name || 'Unknown Service'
+        //       });
+        //     });
+        //   });
+
+        //   // Process work orders to collect product IDs
+        //   workOrders?.forEach(order => {
+        //     const entries = order.product_entries || [];
+        //     entries.forEach(entry => {
+        //       const productId = entry.product_id || entry.id;
+
+        //       // Only add numeric product IDs to lookup set
+        //       if (productId && !CONSULTING_SERVICES[productId] && !isNaN(Number(productId))) {
+        //         productIdsToLookup.add(Number(productId));
+        //       }
+
+        //       allServices.push({
+        //         product_id: productId,
+        //         order_id: order.work_order_id,
+        //         order_type: 'Work Order',
+        //         price: parseFloat(entry.price) || 0,
+        //         quantity: parseInt(entry.quantity) || 0,
+        //         total: (parseFloat(entry.price) || 0) * (parseInt(entry.quantity) || 0),
+        //         date: order.created_at ? formatDateDDMMYYYY(order.created_at, true) : 'N/A',
+        //         // Use a temporary name that will be replaced after lookup
+        //         product_name: entry.name || entry.product_name || 'Unknown Service'
+        //       });
+        //     });
+        //   });
+
+        //   if (allServices.length === 0) {
+        //     setError('No services found for this patient.');
+        //     setLoading(false);
+        //     return;
+        //   }
+
+        //   // Now fetch product names from the products table for all collected IDs
+        //   if (productIdsToLookup.size > 0) {
+        //     const productIdsArray = Array.from(productIdsToLookup);
+        //     console.log("Looking up product names for IDs:", productIdsArray);
+
+        //     // Only proceed with the query if we have at least one valid ID
+        //     if (productIdsArray.length > 0) {
+        //       const { data: productsData, error: productsError } = await supabase
+        //         .from('products')
+        //         .select('id, product_name')
+        //         .in('id', productIdsArray);
+
+        //       console.log("Fetched product data:", productsData);
+
+        //       if (!productsError && productsData) {
+        //         // Create a mapping of product ID to name
+        //         const productNameMap = {};
+        //         productsData.forEach(product => {
+        //           if (product.id) {
+        //             productNameMap[product.id] = product.product_name;
+        //           }
+        //         });
+
+        //         // Update service names using the product name map
+        //         allServices.forEach(service => {
+        //           // First check if it's a consulting service
+        //           if (CONSULTING_SERVICES[service.product_id]) {
+        //             service.product_name = CONSULTING_SERVICES[service.product_id];
+        //           }
+        //           // Then check if we have a name from product lookup
+        //           else if (productNameMap[service.product_id]) {
+        //             service.product_name = productNameMap[service.product_id];
+        //           }
+        //           // Keep the original name if we couldn't find a better one
+        //         });
+        //       }
+        //     }
+        //   }
+
+        //   // Group services by product name to consolidate quantities
+        //   const servicesByProduct = {};
+        //   allServices.forEach(service => {
+        //     const key = service.product_name || 'Unknown Service';
+        //     if (!servicesByProduct[key]) {
+        //       servicesByProduct[key] = {
+        //         product_name: service.product_name || 'Unknown Service',
+        //         quantity: 0,
+        //         total: 0,
+        //         details: []
+        //       };
+        //     }
+        //     servicesByProduct[key].quantity += service.quantity;
+        //     servicesByProduct[key].total += service.total;
+        //     servicesByProduct[key].details.push({
+        //       order_id: service.order_id,
+        //       order_type: service.order_type,
+        //       date: service.date,
+        //       quantity: service.quantity,
+        //       price: service.price
+        //     });
+        //   });
+
+        //   // Convert to array and sort by product name
+        //   fetchedData = Object.values(servicesByProduct)
+        //     .filter(item => item.product_name)
+        //     .sort((a, b) => {
+        //       const nameA = a.product_name || 'Unknown Service';
+        //       const nameB = b.product_name || 'Unknown Service';
+        //       return nameA.localeCompare(nameB);
+        //     });
+
+        //   // Include patient details in report
+        //   reportDetails = {
+        //     type: 'Patient Service',
+        //     patient: patientData,
+        //     mrNumber: patientMrNumber,
+        //     reportTypeLabel: 'Patient Service Report',
+        //     identifier: patientMrNumber,
+        //   };
+
+        //   break;
+        // }
+
         case 'service_report': {
           if (!patientMrNumber.trim()) {
             setError('Please enter a valid MR number.');
@@ -1181,7 +1364,7 @@ const ReportGenerator = ({ isCollapsed }) => {
             return;
           }
 
-          // Fetch sales orders for this patient
+          // Fetch only sales orders for this patient (no work orders)
           const { data: salesOrders, error: salesError } = await supabase
             .from('sales_orders')
             .select('*')
@@ -1191,91 +1374,84 @@ const ReportGenerator = ({ isCollapsed }) => {
             console.error('Error fetching sales orders:', salesError);
           }
 
-          // Fetch work orders for this patient
-          const { data: workOrders, error: workError } = await supabase
-            .from('work_orders')
-            .select('*')
-            .eq('mr_number', patientMrNumber.trim());
-
-          if (workError) {
-            console.error('Error fetching work orders:', workError);
-          }
-
-          // Combine and process the data
+          // Process orders and collect all product IDs that need to be looked up
+          const productIdsToLookup = new Set();
           const allServices = [];
 
-          // Process sales orders
+          // Process sales orders to collect product IDs
           salesOrders?.forEach(order => {
             const entries = order.product_entries || [];
             entries.forEach(entry => {
-              // Get the proper service name - check if it's a consulting service first
-              let serviceName = entry.name || entry.product_name || 'Unknown Service';
               const productId = entry.product_id || entry.id;
 
-              // Special case: If product_id matches consulting services, use the consulting service name
-              if (CONSULTING_SERVICES[productId]) {
-                serviceName = CONSULTING_SERVICES[productId];
-              }
-
-              // Ensure serviceName is never undefined or null
-              if (!serviceName || serviceName.trim() === '') {
-                serviceName = 'Unknown Service';
+              // Only add numeric product IDs to lookup set
+              if (productId && !CONSULTING_SERVICES[productId] && !isNaN(Number(productId))) {
+                productIdsToLookup.add(Number(productId));
               }
 
               allServices.push({
                 product_id: productId,
-                product_name: serviceName,
-                price: parseFloat(entry.price) || 0,
-                quantity: parseInt(entry.quantity) || 0,
-                total: (parseFloat(entry.price) || 0) * (parseInt(entry.quantity) || 0),
                 order_id: order.sales_order_id,
                 order_type: 'Sales Order',
-                date: order.created_at ? formatDateDDMMYYYY(order.created_at, true) : 'N/A',
-              });
-            });
-          });
-
-          // Process work orders
-          workOrders?.forEach(order => {
-            const entries = order.product_entries || [];
-            entries.forEach(entry => {
-              // Get the proper service name - check if it's a consulting service first
-              let serviceName = entry.name || entry.product_name || 'Unknown Service';
-              const productId = entry.product_id || entry.id;
-
-              // Special case: If product_id matches consulting services, use the consulting service name
-              if (CONSULTING_SERVICES[productId]) {
-                serviceName = CONSULTING_SERVICES[productId];
-              }
-
-              // Ensure serviceName is never undefined or null
-              if (!serviceName || serviceName.trim() === '') {
-                serviceName = 'Unknown Service';
-              }
-
-              allServices.push({
-                product_id: productId,
-                product_name: serviceName,
                 price: parseFloat(entry.price) || 0,
                 quantity: parseInt(entry.quantity) || 0,
                 total: (parseFloat(entry.price) || 0) * (parseInt(entry.quantity) || 0),
-                order_id: order.work_order_id,
-                order_type: 'Work Order',
                 date: order.created_at ? formatDateDDMMYYYY(order.created_at, true) : 'N/A',
+                // Use a temporary name that will be replaced after lookup
+                product_name: entry.name || entry.product_name || 'Unknown Service'
               });
             });
           });
 
           if (allServices.length === 0) {
-            setError('No services found for this patient.');
+            setError('No completed services found for this patient.');
             setLoading(false);
             return;
+          }
+
+          // Now fetch product names from the products table for all collected IDs
+          if (productIdsToLookup.size > 0) {
+            const productIdsArray = Array.from(productIdsToLookup);
+            console.log("Looking up product names for IDs:", productIdsArray);
+
+            // Only proceed with the query if we have at least one valid ID
+            if (productIdsArray.length > 0) {
+              const { data: productsData, error: productsError } = await supabase
+                .from('products')
+                .select('id, product_name')
+                .in('id', productIdsArray);
+
+              console.log("Fetched product data:", productsData);
+
+              if (!productsError && productsData) {
+                // Create a mapping of product ID to name
+                const productNameMap = {};
+                productsData.forEach(product => {
+                  if (product.id) {
+                    productNameMap[product.id] = product.product_name;
+                  }
+                });
+
+                // Update service names using the product name map
+                allServices.forEach(service => {
+                  // First check if it's a consulting service
+                  if (CONSULTING_SERVICES[service.product_id]) {
+                    service.product_name = CONSULTING_SERVICES[service.product_id];
+                  }
+                  // Then check if we have a name from product lookup
+                  else if (productNameMap[service.product_id]) {
+                    service.product_name = productNameMap[service.product_id];
+                  }
+                  // Keep the original name if we couldn't find a better one
+                });
+              }
+            }
           }
 
           // Group services by product name to consolidate quantities
           const servicesByProduct = {};
           allServices.forEach(service => {
-            const key = service.product_name || 'Unknown Service'; // Ensure key is never undefined
+            const key = service.product_name || 'Unknown Service';
             if (!servicesByProduct[key]) {
               servicesByProduct[key] = {
                 product_name: service.product_name || 'Unknown Service',
@@ -1295,9 +1471,9 @@ const ReportGenerator = ({ isCollapsed }) => {
             });
           });
 
-          // Convert to array and sort by product name with null safety
+          // Convert to array and sort by product name
           fetchedData = Object.values(servicesByProduct)
-            .filter(item => item.product_name) // Filter out any items without product_name
+            .filter(item => item.product_name)
             .sort((a, b) => {
               const nameA = a.product_name || 'Unknown Service';
               const nameB = b.product_name || 'Unknown Service';
@@ -1315,6 +1491,8 @@ const ReportGenerator = ({ isCollapsed }) => {
 
           break;
         }
+
+
         case 'stock_report': {
           const { data: productsData, error: productsError } = await supabase
             .from('products')
@@ -2366,14 +2544,14 @@ const ReportGenerator = ({ isCollapsed }) => {
         const totalServices = data.length;
         const totalQuantity = data.reduce((acc, curr) => acc + (curr.quantity || 0), 0);
         const totalAmount = data.reduce((acc, curr) => acc + (curr.total || 0), 0);
-        
+
         // Get the most frequently used service
         let serviceCounts = {};
         data.forEach(service => {
           const name = service.product_name || 'Unknown Service';
           serviceCounts[name] = (serviceCounts[name] || 0) + service.quantity;
         });
-        
+
         let mostFrequentService = '';
         let maxCount = 0;
         for (const [service, count] of Object.entries(serviceCounts)) {
@@ -2382,7 +2560,7 @@ const ReportGenerator = ({ isCollapsed }) => {
             maxCount = count;
           }
         }
-        
+
         // Get service with highest cost
         let highestCostService = '';
         let highestCost = 0;
@@ -2392,10 +2570,10 @@ const ReportGenerator = ({ isCollapsed }) => {
             highestCostService = service.product_name || 'Unknown Service';
           }
         });
-        
+
         // Calculate average cost per service
         const avgCostPerService = totalServices > 0 ? totalAmount / totalServices : 0;
-        
+
         // Create the main summary table for service report
         summaryTable = [
           ['Total Unique Services', totalServices],
@@ -2410,7 +2588,7 @@ const ReportGenerator = ({ isCollapsed }) => {
     }
 
     // Generate the summary table
-    
+
     // Generate the main summary table
     doc.autoTable({
       startY: summaryStartY + 5,
@@ -2432,7 +2610,7 @@ const ReportGenerator = ({ isCollapsed }) => {
         1: { halign: 'center', cellWidth: 40 },
       },
     });
-    
+
     // Add Footer with page numbers
     addFooter(doc);
 
