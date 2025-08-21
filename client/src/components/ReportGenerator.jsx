@@ -17,7 +17,28 @@ const capitalizeFirstLetter = (string) => {
 const CONSULTING_SERVICES = {
   "CS01": "Consultation",
   "CS02": "Follow-up Consultation",
-  "CS03": "Special Consultation"
+  "CS03": "Special Consultation",
+  "CS04": "Express Consultation",
+  "CS05": "Home Consultation"
+};
+
+const formatDateTimeIST = (dateStr) => {
+  if (!dateStr) return 'N/A';
+
+  const date = new Date(dateStr);
+
+  // Format options for IST
+  const options = {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Kolkata' // Explicitly use IST timezone
+  };
+
+  return date.toLocaleString('en-IN', options);
 };
 
 
@@ -1119,8 +1140,8 @@ const ReportGenerator = ({ isCollapsed }) => {
               status: 'Completed', // Sales orders are completed transactions
               patient_customer_name: patientMap[sale.mr_number] || customerName || 'N/A',
               branch: sale.branch || 'N/A',
-              created_at: sale.created_at ? formatDateDDMMYYYY(sale.created_at, true) : 'N/A',
-              updated_at: sale.updated_at ? formatDateDDMMYYYY(sale.updated_at, true) : 'N/A',
+              created_at: sale.created_at ? formatDateTimeIST(sale.created_at) : 'N/A',
+              updated_at: sale.updated_at ? formatDateTimeIST(sale.updated_at) : 'N/A',
               raw_created_at: sale.created_at,
               payment_method: sale.payment_method || 'N/A',
             };

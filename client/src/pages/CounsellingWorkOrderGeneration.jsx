@@ -2371,7 +2371,7 @@ const WorkOrderGeneration = ({ isCollapsed }) => {
                                                 Select Payment Method
                                             </option>
                                             <option value="cash">Cash</option>
-                                            <option value="card">Card</option>
+                                            {/* <option value="card">Card</option> */}
                                             <option value="online">UPI (Paytm/PhonePe/GPay)</option>
                                         </select>
 

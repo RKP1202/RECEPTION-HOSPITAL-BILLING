@@ -37,15 +37,17 @@ const getCurrentISTTime = () => {
 const DEFAULT_CONSULTING_SERVICE = {
     product_id: "CS01",  // Consulting Service ID
     name: "Consultation",
-    price: "500",
+    price: "200",
     hsn_code: "998931"
 };
 
 // Additional common services
 const COMMON_SERVICES = [
     DEFAULT_CONSULTING_SERVICE,
-    { product_id: "CS02", name: "Follow-up Consultation", price: "800", hsn_code: "998931" },
-    { product_id: "CS03", name: "Special Consultation", price: "1000", hsn_code: "998931" }
+    { product_id: "CS02", name: "Follow-up Consultation", price: "350", hsn_code: "998931" },
+    { product_id: "CS03", name: "Special Consultation", price: "500", hsn_code: "998931" },
+    { product_id: "CS04", name: "Express Consultation", price: "700", hsn_code: "998931" },
+    { product_id: "CS05", name: "Home Consultation", price: "1000", hsn_code: "998931" }
 ];
 
 // Utility Functions
@@ -4317,12 +4319,12 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
                                             )}
 
                                             <div className="mt-2 print:hidden">
-                                                <label>
+                                                <label className="print:hidden">
                                                     <input
                                                         type="checkbox"
                                                         checked={useManualConsultant}
                                                         onChange={(e) => setUseManualConsultant(e.target.checked)}
-                                                        className="mr-2"
+                                                        className="mr-2 print:hidden"
                                                     />
                                                     Enter Manually
                                                 </label>
@@ -4409,7 +4411,7 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
                                         <div>
                                             {/* Taxable Value and GST Breakdown */}
                                             <p>
-                                                Amt. after discount:
+                                                Total Amt.
                                                 <strong> ₹{parseFloat(taxableValue).toFixed(2)}</strong>
                                             </p>
                                             {/* Billed By */}
@@ -4496,7 +4498,7 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
                                                     Select Payment Method
                                                 </option>
                                                 <option value="cash">Cash</option>
-                                                <option value="card">Card</option>
+                                                {/* <option value="card">Card</option> */}
                                                 <option value="online">UPI (Paytm/PhonePe/GPay)</option>
                                             </select>
                                             {validationErrors.paymentMethod && (
