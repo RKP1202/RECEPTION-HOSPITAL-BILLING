@@ -287,113 +287,6 @@ const Home = ({ isCollapsed }) => {
       return data;
     }
   };
-  // Fetch sales order details with product entries
-  // Fetch sales order details with product entries
-  // const fetchSalesOrderDetails = async (salesOrderId) => {
-  //   try {
-  //     // 1. Fetch the basic sales order data
-  //     const { data, error } = await supabase
-  //       .from('sales_orders')
-  //       .select('*')
-  //       .eq('sales_order_id', salesOrderId)
-  //       .single();
-
-  //     if (error) {
-  //       console.error("Error fetching sales order details:", error.message);
-  //       alert("Failed to fetch sales order details.");
-  //       return null;
-  //     }
-
-  //     // 2. Product entries are already in the sales_orders table as a JSON column
-  //     // Parse the product_entries JSON field if it exists
-  //     let productEntries = [];
-  //     if (data.product_entries) {
-  //       try {
-  //         // If it's a string, parse it, otherwise use as is
-  //         productEntries = typeof data.product_entries === 'string'
-  //           ? JSON.parse(data.product_entries)
-  //           : data.product_entries;
-  //       } catch (err) {
-  //         console.error("Error parsing product entries:", err);
-  //         productEntries = [];
-  //       }
-  //     }
-
-  //     // 3. Get customer details
-  //     let customerDetails = {};
-
-  //     if (data.mr_number) {
-  //       // Fetch patient details
-  //       const { data: patientData, error: patientError } = await supabase
-  //         .from('patients')
-  //         .select('name, age, gender, address')
-  //         .eq('mr_number', data.mr_number)
-  //         .single();
-
-  //       if (!patientError && patientData) {
-  //         customerDetails = {
-  //           name: patientData.name,
-  //           age: patientData.age,
-  //           gender: patientData.gender,
-  //           address: patientData.address,
-  //         };
-  //       } else {
-  //         console.error("Error fetching patient details:", patientError?.message);
-  //         customerDetails = {
-  //           name: 'N/A',
-  //           age: 'N/A',
-  //           gender: 'N/A',
-  //           address: 'N/A',
-  //         };
-  //       }
-  //     } else if (data.customer_id) {
-  //       // Fetch customer details
-  //       const { data: customerData, error: customerError } = await supabase
-  //         .from('customers')
-  //         .select('name, age, gender, address')
-  //         .eq('customer_id', data.customer_id)
-  //         .single();
-
-  //       if (!customerError && customerData) {
-  //         customerDetails = {
-  //           name: customerData.name,
-  //           age: customerData.age,
-  //           gender: customerData.gender,
-  //           address: customerData.address,
-  //         };
-  //       } else {
-  //         console.error("Error fetching customer details:", customerError?.message);
-  //         customerDetails = {
-  //           name: 'N/A',
-  //           age: 'N/A',
-  //           gender: 'N/A',
-  //           address: 'N/A',
-  //         };
-  //       }
-  //     } else {
-  //       customerDetails = {
-  //         name: 'N/A',
-  //         age: 'N/A',
-  //         gender: 'N/A',
-  //         address: 'N/A',
-  //       };
-  //     }
-
-  //     // 4. Return combined data
-  //     return {
-  //       ...data,
-  //       items: productEntries, // Use the parsed JSON array
-  //       customerDetails
-  //     };
-
-  //   } catch (err) {
-  //     console.error("Error in fetchSalesOrderDetails:", err);
-  //     alert("An unexpected error occurred while fetching sales order details.");
-  //     return null;
-  //   }
-  // };
-
-  // ...existing code...
 
   // Fetch sales order details with product entries
   const fetchSalesOrderDetails = async (salesOrderId) => {
@@ -425,89 +318,55 @@ const Home = ({ isCollapsed }) => {
         }
       }
 
-      // 3. Fetch product names for each product ID
-      // const productIds = productEntries.map(item => item.product_id).filter(id => id);
-      // const CONSULTING_SERVICES = {
-      //   "CS01": "Consultation",
-      //   "CS02": "Follow-up Consultation",
-      //   "CS03": "Special Consultation"
-      // };
+      const productIds = productEntries.map(item => item.product_id).filter(id => id);
+      const CONSULTING_SERVICES = {
+        "CS01": "Consultation",
+        "CS02": "Follow-up Consultation",
+        "CS03": "Special Consultation",
+        "CS04": "Express Consultation",
+        "CS05": "Home Consultation"
+      };
 
+      if (productIds.length > 0) {
+        // Fix: Check if id is a string before calling startsWith
+        const numericProductIds = productIds.filter(id => {
+          // Convert to string if it's not already
+          const idStr = String(id);
+          // Then check if it doesn't start with CS and is a valid number
+          return !idStr.startsWith('CS') && !isNaN(idStr);
+        });
 
-      // if (productIds.length > 0) {
-      //   const { data: productsData, error: productsError } = await supabase
-      //     .from('products')
-      //     .select('id, product_name')
-      //     .in('id', productIds);
+        if (numericProductIds.length > 0) {
+          const { data: productsData, error: productsError } = await supabase
+            .from('products')
+            .select('id, product_name')
+            .in('id', numericProductIds);
 
-      //   if (!productsError && productsData) {
-      //     // Create a map of product_id to product_name for quick lookup
-      //     const productMap = {};
-      //     productsData.forEach(product => {
-      //       productMap[product.product_id] = product.product_name;
-      //     });
+          if (!productsError && productsData) {
+            // Create a map of product_id to product_name for quick lookup
+            const productMap = {};
+            productsData.forEach(product => {
+              productMap[product.id] = product.product_name;
+            });
 
-      //     console.log("Product Map:", productMap);
+            console.log("Product Map:", productMap);
 
-
-      //     // Add product names to the product entries
-      //     productEntries = productEntries.map(item => ({
-      //       ...item,
-      //       name: productMap[item.product_id] || CONSULTING_SERVICES[item.product_id] || 'N/A'
-      //     }));
-      //   } else {
-      //     console.error("Error fetching product details:", productsError?.message);
-      //   }
-      // }
-      // In the fetchSalesOrderDetails function:
-
-const productIds = productEntries.map(item => item.product_id).filter(id => id);
-const CONSULTING_SERVICES = {
-  "CS01": "Consultation",
-  "CS02": "Follow-up Consultation",
-  "CS03": "Special Consultation"
-};
-
-if (productIds.length > 0) {
-  // Fix: Check if id is a string before calling startsWith
-  const numericProductIds = productIds.filter(id => {
-    // Convert to string if it's not already
-    const idStr = String(id);
-    // Then check if it doesn't start with CS and is a valid number
-    return !idStr.startsWith('CS') && !isNaN(idStr);
-  });
-
-  if (numericProductIds.length > 0) {
-    const { data: productsData, error: productsError } = await supabase
-      .from('products')
-      .select('id, product_name')
-      .in('id', numericProductIds);
-
-    if (!productsError && productsData) {
-      // Create a map of product_id to product_name for quick lookup
-      const productMap = {};
-      productsData.forEach(product => {
-        productMap[product.id] = product.product_name;
-      });
-
-      console.log("Product Map:", productMap);
-
-      // Add product names to the product entries
-      productEntries = productEntries.map(item => ({
-        ...item,
-        name: productMap[item.product_id] || CONSULTING_SERVICES[item.product_id] || 'N/A'
-      }));
-    } else {
-      console.error("Error fetching product details:", productsError?.message);
-    }
-  } else {
-    // If we only have consulting service IDs, just map those
-    productEntries = productEntries.map(item => ({
-      ...item,
-      name: CONSULTING_SERVICES[item.product_id] || 'N/A'
-    }));
-  }
-}
+            // Add product names to the product entries
+            productEntries = productEntries.map(item => ({
+              ...item,
+              name: productMap[item.product_id] || CONSULTING_SERVICES[item.product_id] || 'N/A'
+            }));
+          } else {
+            console.error("Error fetching product details:", productsError?.message);
+          }
+        } else {
+          // If we only have consulting service IDs, just map those
+          productEntries = productEntries.map(item => ({
+            ...item,
+            name: CONSULTING_SERVICES[item.product_id] || 'N/A'
+          }));
+        }
+      }
       // 4. Get customer details
       let customerDetails = {};
 
