@@ -101,7 +101,7 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
   const [employees, setEmployees] = useState([]);
   const [purchaseFromList, setPurchaseFromList] = useState([]);
 
-  // Product Suggestions for Update Mode
+  // Service Suggestions for Update Mode
   const [productSuggestions, setProductSuggestions] = useState([]);
 
   // Stock Data
@@ -345,8 +345,8 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
     for (let i = 0; i < addProducts.length; i++) {
       const p = addProducts[i];
       const missingFields = [];
-      if (!p.productName.trim()) missingFields.push(`Product Name (#${i+1})`);
-      if (!p.productId.trim()) missingFields.push(`Product ID (#${i+1})`);
+      if (!p.productName.trim()) missingFields.push(`Service Name (#${i+1})`);
+      if (!p.productId.trim()) missingFields.push(`Service ID (#${i+1})`);
       if (!p.rate) missingFields.push(`Rate (#${i+1})`);
       if (!p.mrp) missingFields.push(`MRP (#${i+1})`);
       if (!p.quantity) missingFields.push(`Quantity (#${i+1})`);
@@ -425,7 +425,7 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
     for (let i = 0; i < updateProducts.length; i++) {
       const p = updateProducts[i];
       const missingFields = [];
-      if (!p.searchQuery) missingFields.push(`Product Search (#${i+1})`);
+      if (!p.searchQuery) missingFields.push(`Service Search (#${i+1})`);
       if (!p.quantity) missingFields.push(`Quantity (#${i+1})`);
       if (!p.rate) missingFields.push(`Rate (#${i+1})`);
       if (!p.mrp) missingFields.push(`MRP (#${i+1})`);
@@ -555,7 +555,7 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
           continue;
         }
 
-        toast.success(`Product ${p.product_id} added successfully.`);
+        toast.success(`Service ${p.product_id} added successfully.`);
       }
 
       handleModeSelection("add");
@@ -616,7 +616,7 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
           continue;
         }
 
-        toast.success(`Product ${p.product_id} updated successfully.`);
+        toast.success(`Service ${p.product_id} updated successfully.`);
       }
 
       handleModeSelection("update");
@@ -708,6 +708,8 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
     }
 
     try {
+      console.log("Fetching stock data for branch:", lookupBranch);
+
       const { data, error } = await supabase
         .from("stock")
         .select(
@@ -715,6 +717,8 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
            product:products(id, product_name, product_id, rate, mrp, purchase_from, hsn_code)`
         )
         .eq("branch_code", lookupBranch);
+
+      console.log("Stock data fetched successfully:", data);
 
       if (error) {
         console.error("Error fetching stock data:", error);
@@ -752,7 +756,7 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
       />
 
       <h1 className="text-2xl font-semibold mb-6 text-center">
-        Product Purchase
+        Service Purchase
       </h1>
 
       {/* Mode Selection Buttons */}
@@ -858,16 +862,16 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
                   type="button"
                   onClick={() => handleRemoveAddProductEntry(i)}
                   className="absolute top-2 right-2 text-red-500 hover:text-red-700"
-                  title="Remove Product"
+                  title="Remove Service"
                 >
                   &times;
                 </button>
               )}
-              <h3 className="text-lg font-medium mb-2">Product {i + 1}</h3>
+              <h3 className="text-lg font-medium mb-2">Service {i + 1}</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div>
                   <label className="block mb-2 font-medium">
-                    Product Name<span className="text-red-500">*</span>
+                    Service Name<span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -884,7 +888,7 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
 
                 <div>
                   <label className="block mb-2 font-medium">
-                    Product ID<span className="text-red-500">*</span>
+                    Service ID<span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -982,7 +986,7 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
             onClick={handleAddProductEntry}
             className="mb-4 text-blue-500 hover:underline"
           >
-            + Add Another Product
+            + Add Another Service
           </button>
 
           <button
@@ -1089,15 +1093,15 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
                   type="button"
                   onClick={() => handleRemoveUpdateProductEntry(i)}
                   className="absolute top-2 right-2 text-red-500 hover:text-red-700"
-                  title="Remove Product"
+                  title="Remove Service"
                 >
                   &times;
                 </button>
               )}
-              <h3 className="text-lg font-medium mb-2">Product {i + 1}</h3>
+              <h3 className="text-lg font-medium mb-2">Service {i + 1}</h3>
               <div className="md:col-span-3 mb-4">
                 <label className="block mb-2 font-medium">
-                  Search Product by Name or ID<span className="text-red-500">*</span>
+                  Search Service by Name or ID<span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -1133,7 +1137,7 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div>
-                      <label className="block mb-2 font-medium">Product Name</label>
+                      <label className="block mb-2 font-medium">Service Name</label>
                       <input
                         type="text"
                         value={prod.selectedProduct.product_name}
@@ -1143,7 +1147,7 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
                     </div>
 
                     <div>
-                      <label className="block mb-2 font-medium">Product ID</label>
+                      <label className="block mb-2 font-medium">Service ID</label>
                       <input
                         type="text"
                         value={prod.selectedProduct.product_id}
@@ -1237,7 +1241,7 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
             onClick={handleAddUpdateProductEntry}
             className="mb-4 text-blue-500 hover:underline"
           >
-            + Add Another Product
+            + Add Another Service
           </button>
 
           <button
@@ -1303,7 +1307,7 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
         {/* Stock Search Input */}
         <input
           type="text"
-          placeholder="Search by Product ID or Name"
+          placeholder="Search by Service ID or Name"
           value={stockSearchQuery}
           onChange={handleStockSearchInputChange}
           className="w-full p-2 border rounded mb-4"
@@ -1314,8 +1318,8 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
           <table className="min-w-full bg-white">
             <thead>
               <tr>
-                <th className="py-2 px-4 border-b">Product ID</th>
-                <th className="py-2 px-4 border-b">Product Name</th>
+                <th className="py-2 px-4 border-b">Service ID</th>
+                <th className="py-2 px-4 border-b">Service Name</th>
                 <th className="py-2 px-4 border-b">Quantity</th>
                 {role !== "employee" && <th className="py-2 px-4 border-b">Party Rate</th>}
                 <th className="py-2 px-4 border-b">MRP</th>
@@ -1445,7 +1449,7 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
                 <table className="min-w-full bg-gray-100">
                   <thead>
                     <tr>
-                      <th className="py-2 px-4 border-b">Product ID</th>
+                      <th className="py-2 px-4 border-b">Service ID</th>
                       <th className="py-2 px-4 border-b">Name</th>
                       <th className="py-2 px-4 border-b">Qty</th>
                       <th className="py-2 px-4 border-b">Rate</th>
@@ -1481,10 +1485,10 @@ const EmployeeStockManagement = ({ isCollapsed }) => {
                   <div><span className="font-medium">Employee:</span></div>
                   <div><span>{state.purchaseModal.content.employee}</span></div>
 
-                  <div><span className="font-medium">Product Name:</span></div>
+                  <div><span className="font-medium">Service Name:</span></div>
                   <div><span>{state.purchaseModal.content.product_name}</span></div>
 
-                  <div><span className="font-medium">Product ID:</span></div>
+                  <div><span className="font-medium">Service ID:</span></div>
                   <div><span>{state.purchaseModal.content.product_id}</span></div>
 
                   <div><span className="font-medium">HSN Code:</span></div>
