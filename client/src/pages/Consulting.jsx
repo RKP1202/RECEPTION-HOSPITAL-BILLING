@@ -1862,7 +1862,35 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
 
         if (Object.keys(errors).length === 0) {
             if (step < 5) {
-                updateSalesOrderForm({ step: step + 1 });
+                // If moving to step 3 (invoice view), ensure we have a sales order ID
+                if (step === 2 && !salesOrderId) {
+                    try {
+                        const newSalesOrderId = await generateSalesOrderId(branch);
+                        if (newSalesOrderId) {
+                            updateSalesOrderForm({ 
+                                step: step + 1,
+                                salesOrderId: newSalesOrderId 
+                            });
+                        } else {
+                            updateSalesOrderForm({
+                                validationErrors: {
+                                    ...validationErrors,
+                                    generalError: "Failed to generate sales order ID"
+                                }
+                            });
+                        }
+                    } catch (error) {
+                        console.error("Error generating sales order ID:", error);
+                        updateSalesOrderForm({
+                            validationErrors: {
+                                ...validationErrors,
+                                generalError: "Error generating sales order ID"
+                            }
+                        });
+                    }
+                } else {
+                    updateSalesOrderForm({ step: step + 1 });
+                }
             }
         }
     };
@@ -2601,12 +2629,16 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
         }
 
         try {
-            // Generate new sales order ID
-            const newSalesOrderId = await generateSalesOrderId(branch);
-            if (!newSalesOrderId) {
-                alert("Failed to generate sales order ID");
-                dispatch({ type: "SET_SALES_ORDER_FORM", payload: { isSaving: false } });
-                return;
+            let finalSalesOrderId = salesOrderId;
+            if (!finalSalesOrderId) {
+                const newSalesOrderId = await generateSalesOrderId(branch);
+                if (!newSalesOrderId) {
+                    alert("Failed to generate sales order ID");
+                    dispatch({ type: "SET_SALES_ORDER_FORM", payload: { isSaving: false } });
+                    return;
+                }
+                finalSalesOrderId = newSalesOrderId;
+                dispatch({ type: "SET_SALES_ORDER_FORM", payload: { salesOrderId: finalSalesOrderId } });
             }
 
             // Calculate amounts
@@ -2650,7 +2682,7 @@ const Consulting = memo(({ isCollapsed, onModificationSuccess }) => {
 
             // Prepare the payload
             const payload = {
-                sales_order_id: newSalesOrderId, // Use the formatted ID
+                sales_order_id: finalSalesOrderId, // Use the existing or newly generated ID
                 branch,
                 sub_role: subRole,
                 employee,
